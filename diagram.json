@@ -22,19 +22,16 @@
     "connections": [
       [ "esp:TX", "$serialMonitor:RX", "", [] ],
       [ "esp:RX", "$serialMonitor:TX", "", [] ],
-      [ "lcd1:D/C", "esp:2", "#8f4814", [ "h-28.8", "v44.14" ] ],
-      [ "lcd1:MOSI", "esp:23", "green", [ "h-38.4", "v-67.31" ] ],
       [ "esp:5V", "lcd1:VCC", "red", [ "h-21.83", "v-206.3", "h201.6", "v48.5" ] ],
-      [ "lcd1:CS", "esp:15", "violet", [ "h-57.6", "v105.6" ] ],
-      [ "esp:GND.2", "btn1:2.l", "black", [ "h76.8", "v201.4" ] ],
-      [ "esp:5", "btn1:1.l", "green", [ "h19.2", "v96" ] ],
+      [ "lcd1:CS", "esp:2", "violet", [ "h-57.6", "v105.6" ] ],
       [ "lcd1:GND", "esp:GND.10", "black", [ "h-54.56", "v-45.08" ] ],
       [ "lcd1:MOSI", "esp:6", "green", [ "h-73.76", "v-6.68" ] ],
       [ "lcd1:SCK", "esp:4", "green", [ "h-92.96", "v2.92" ] ],
       [ "lcd1:MISO", "esp:5", "green", [ "h-112.16", "v-25.88" ] ],
       [ "lcd1:LED", "esp:5V.1", "green", [ "h-73.76", "v70.12", "h-182.4", "v-48" ] ],
-      [ "lcd1:CS", "esp:9", "green", [ "h-102.56", "v-16.28" ] ],
-      [ "esp:3", "lcd1:RST", "green", [ "h28.8", "v9.6" ] ]
+      
+      [ "esp:9", "lcd1:RST", "green", [ "h28.8", "v9.6" ] ],
+      [ "esp:7", "lcd1:D/C", "green", [ "h74.38", "v9.6" ] ]
     ],
     "serialMonitor": { "display": "terminal", "convertEol": false },
     "dependencies": {}
