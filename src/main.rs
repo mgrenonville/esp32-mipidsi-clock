@@ -5,7 +5,6 @@
 use embedded_hal_bus::spi::ExclusiveDevice;
 use esp_backtrace as _;
 use hal::{delay::Delay, gpio::{Io, Level, Output}, prelude::*,
-
           spi::{master::Spi, SpiMode}};
 
 extern crate alloc;
@@ -21,11 +20,14 @@ use embedded_graphics::{
 
 // Provides the parallel port and display interface builders
 use display_interface_spi::SPIInterface;
+use hal::ledc::{channel, LowSpeed, LSGlobalClkSource, timer};
+use hal::ledc::channel::config::PinConfig;
+use hal::ledc::Ledc;
 
 // Provides the Display builder
 use mipidsi::Builder;
-use mipidsi::models::ILI9341Rgb565;
-use mipidsi::options::{Orientation, Rotation};
+use mipidsi::models::ST7789;
+use mipidsi::options::{ColorInversion, Orientation, Rotation};
 
 fn init_heap() {
     const HEAP_SIZE: usize = 32 * 1024;
@@ -44,17 +46,45 @@ fn configure_screen() {
     let peripherals = hal::init(hal::Config::default());
     let mut delay = Delay::new();
     let io = Io::new(peripherals.GPIO, peripherals.IO_MUX);
+
+    let mut ledc = Ledc::new(peripherals.LEDC);
+    ledc.set_global_slow_clock(LSGlobalClkSource::APBClk);
+
+
+    let mut lstimer0 = ledc.get_timer::<LowSpeed>(timer::Number::Timer0);
+    lstimer0
+        .configure(timer::config::Config {
+            duty: timer::config::Duty::Duty5Bit,
+            clock_source: timer::LSClockSource::APBClk,
+            frequency: 24u32.kHz(),
+        })
+        .unwrap();
+
     // Define the Data/Command select pin as a digital output
-    let dc = Output::new(io.pins.gpio7, Level::Low);
+    let dc = Output::new(io.pins.gpio15, Level::Low);
+    let sck = io.pins.gpio18;
+    let miso = io.pins.gpio22;
+    let mosi = io.pins.gpio19;
+    let cs = io.pins.gpio4;
+
     // Define the reset pin as digital outputs and make it high
-    let mut rst = Output::new(io.pins.gpio9, Level::Low);
+    let mut rst = Output::new(io.pins.gpio6, Level::Low);
+    let  led = Output::new(io.pins.gpio5, Level::Low);
     rst.set_high();
+    // led.set_high();
+
+    let mut channel0 = ledc.get_channel(channel::Number::Channel0, led);
+    channel0
+        .configure(channel::config::Config {
+            timer: &lstimer0,
+            duty_pct: 10,
+
+            pin_config: PinConfig::PushPull,
+        })
+        .unwrap();
+
 
     // Define the SPI pins and create the SPI interface
-    let sck = io.pins.gpio4;
-    let miso = io.pins.gpio5;
-    let mosi = io.pins.gpio6;
-    let cs = io.pins.gpio2;
     let spi = Spi::new(peripherals.SPI2, 60u32.MHz(), SpiMode::Mode0).with_pins(
         sck,
         mosi,
@@ -68,10 +98,11 @@ fn configure_screen() {
     // Define the display interface with no chip select
     let di = SPIInterface::new(spi_device, dc);
     // Define the display from the display interface and initialize it
-    let mut display = Builder::new(ILI9341Rgb565, di)
+    let mut display = Builder::new(ST7789, di)
         .reset_pin(rst)
-        .color_order(mipidsi::options::ColorOrder::Bgr)
-        .orientation( Orientation::new().rotate(Rotation::Deg180))
+        .color_order(mipidsi::options::ColorOrder::Rgb)
+        .invert_colors(ColorInversion::Inverted)
+        .orientation(Orientation::new().rotate(Rotation::Deg180))
         .init(&mut delay)
         .unwrap();
 
@@ -116,7 +147,6 @@ fn draw_smiley<T: DrawTarget<Color=Rgb565>>(display: &mut T) -> Result<(), T::Er
 
 #[entry]
 fn main() -> ! {
-
     let delay = Delay::new();
     init_heap();
 

@@ -1,5 +1,5 @@
 [package]
-name = "test-adv-espc6"
+name = "esp32-mipidsi-clock"
 version = "0.1.0"
 authors = ["mgrenonville <mgrenonville@mediarithmics.com>"]
 edition = "2021"
