@@ -7,20 +7,20 @@ license = "MIT OR Apache-2.0"
 
 [dependencies]
 esp-backtrace = { version = "0.14.2", features = [
-    "esp32c3",
+    "esp32c6",
     "exception-handler",
     "panic-handler",
     "println",
 ] }
-hal = { package= "esp-hal", version = "0.21.1", features = [ "esp32c3" ] }
+hal = { package= "esp-hal", version = "0.21.1", features = [ "esp32c6" ] }
 embedded-hal-bus = { version = "0.2.0"}
 display-interface-spi = "0.5.0"
-esp-println = { version = "0.12.0", features = ["esp32c3", "log"] }
+esp-println = { version = "0.12.0", features = ["esp32c6", "log"] }
 log = { version = "0.4.22" }
 esp-alloc = { version = "0.5.0" }
 embedded-io = "0.6.1"
 esp-wifi = { version = "0.10.1", features = [
-    "esp32c3",
+    "esp32c6",
     "phy-enable-usb",
     "utils",
     "wifi",
@@ -39,6 +39,12 @@ smoltcp = { version = "0.11.0", default-features = false, features = [
 ] }
 embedded-graphics = "0.8.0"
 mipidsi = "0.8.0"
+#
+#[features]
+#default = []
+#esp32-c3 = ["hal/esp32c3", "esp-println/esp32c3", "esp-wifi/esp32c3", "esp-backtrace/esp32c3"]
+#esp32-c6 = ["hal/esp32c6", "esp-println/esp32c6", "esp-wifi/esp32c6", "esp-backtrace/esp32c6"]
+
 
 [profile.dev]
 # Rust debug is too slow.

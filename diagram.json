@@ -4,11 +4,10 @@
     "editor": "wokwi",
     "parts": [
       {
-        "type": "board-esp32-c3-devkitm-1",
+        "type": "board-esp32-c6-devkitc-1",
         "id": "esp",
         "top": 76.5,
-        "left": -195.78,
-        "attrs": { "flashSize": "16" }
+        "left": -195.78
       },
       {
         "type": "board-ili9341-cap-touch",
