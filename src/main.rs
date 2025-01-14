@@ -1,33 +1,32 @@
 #![no_std]
 #![no_main]
 
-
-use embedded_hal_bus::spi::ExclusiveDevice;
-use esp_backtrace as _;
-use hal::{delay::Delay, gpio::{Io, Level, Output}, prelude::*,
-          spi::{master::Spi, SpiMode}};
-
 extern crate alloc;
 
 use core::mem::MaybeUninit;
 
-
+use display_interface_spi::SPIInterface;
 use embedded_graphics::{
     pixelcolor::Rgb565,
     prelude::*,
     primitives::{Circle, Primitive, PrimitiveStyle, Triangle},
 };
-
-// Provides the parallel port and display interface builders
-use display_interface_spi::SPIInterface;
-use hal::ledc::{channel, LowSpeed, LSGlobalClkSource, timer};
-use hal::ledc::channel::config::PinConfig;
-use hal::ledc::Ledc;
-
-// Provides the Display builder
+use embedded_hal_bus::spi::ExclusiveDevice;
+use hal::delay::Delay;
+use hal::peripheral::Peripheral;
+use hal::reset::software_reset;
+use hal::{gpio::AnyPin, prelude::*};
 use mipidsi::Builder;
+// Provides the Display builder
 use mipidsi::models::ST7789;
 use mipidsi::options::{ColorInversion, Orientation, Rotation};
+
+use crate::board::{types, SpiScreen};
+
+mod board;
+mod boards;
+
+// Provides the parallel port and display interface builders
 
 fn init_heap() {
     const HEAP_SIZE: usize = 32 * 1024;
@@ -42,64 +41,17 @@ fn init_heap() {
     }
 }
 
-fn configure_screen() {
-    let peripherals = hal::init(hal::Config::default());
-    let mut delay = Delay::new();
-    let io = Io::new(peripherals.GPIO, peripherals.IO_MUX);
-
-    let mut ledc = Ledc::new(peripherals.LEDC);
-    ledc.set_global_slow_clock(LSGlobalClkSource::APBClk);
-
-
-    let mut lstimer0 = ledc.get_timer::<LowSpeed>(timer::Number::Timer0);
-    lstimer0
-        .configure(timer::config::Config {
-            duty: timer::config::Duty::Duty5Bit,
-            clock_source: timer::LSClockSource::APBClk,
-            frequency: 24u32.kHz(),
-        })
-        .unwrap();
-
-    // Define the Data/Command select pin as a digital output
-    let dc = Output::new(io.pins.gpio15, Level::Low);
-    let sck = io.pins.gpio18;
-    let miso = io.pins.gpio22;
-    let mosi = io.pins.gpio19;
-    let cs = io.pins.gpio4;
-
-    // Define the reset pin as digital outputs and make it high
-    let mut rst = Output::new(io.pins.gpio6, Level::Low);
-    let  led = Output::new(io.pins.gpio5, Level::Low);
-    rst.set_high();
-    // led.set_high();
-
-    let mut channel0 = ledc.get_channel(channel::Number::Channel0, led);
-    channel0
-        .configure(channel::config::Config {
-            timer: &lstimer0,
-            duty_pct: 10,
-
-            pin_config: PinConfig::PushPull,
-        })
-        .unwrap();
-
-
-    // Define the SPI pins and create the SPI interface
-    let spi = Spi::new(peripherals.SPI2, 60u32.MHz(), SpiMode::Mode0).with_pins(
-        sck,
-        mosi,
-        miso,
-        hal::gpio::NoPin,
-    );
-    let cs_output = Output::new(cs, Level::High);
-    let spi_device = ExclusiveDevice::new_no_delay(spi, cs_output).unwrap();
+fn configure_screen(screen: SpiScreen<types::DisplaySPI>) {
+    let spi_device = ExclusiveDevice::new_no_delay(screen.spi, screen.cs_output).unwrap();
     let mut buffer = [0_u8; 512];
 
     // Define the display interface with no chip select
-    let di = SPIInterface::new(spi_device, dc);
+    let di = SPIInterface::new(spi_device, screen.dc);
     // Define the display from the display interface and initialize it
+    let mut delay = Delay::new();
+
     let mut display = Builder::new(ST7789, di)
-        .reset_pin(rst)
+        .reset_pin(screen.rst)
         .color_order(mipidsi::options::ColorOrder::Rgb)
         .invert_colors(ColorInversion::Inverted)
         .orientation(Orientation::new().rotate(Rotation::Deg180))
@@ -108,12 +60,13 @@ fn configure_screen() {
 
     // Make the display all black
     display.clear(Rgb565::BLACK).unwrap();
+    log::info!("drawing smiley face");
 
     // Draw a smiley face with white eyes and a red mouth
     draw_smiley(&mut display).unwrap();
 }
 
-fn draw_smiley<T: DrawTarget<Color=Rgb565>>(display: &mut T) -> Result<(), T::Error> {
+fn draw_smiley<T: DrawTarget<Color = Rgb565>>(display: &mut T) -> Result<(), T::Error> {
     // Draw the left eye as a circle located at (50, 100), with a diameter of 40, filled with white
     Circle::new(Point::new(50, 100), 40)
         .into_styled(PrimitiveStyle::with_fill(Rgb565::WHITE))
@@ -130,8 +83,8 @@ fn draw_smiley<T: DrawTarget<Color=Rgb565>>(display: &mut T) -> Result<(), T::Er
         Point::new(130, 200),
         Point::new(160, 170),
     )
-        .into_styled(PrimitiveStyle::with_fill(Rgb565::RED))
-        .draw(display)?;
+    .into_styled(PrimitiveStyle::with_fill(Rgb565::RED))
+    .draw(display)?;
 
     // Cover the top part of the mouth with a black triangle so it looks closed instead of open
     Triangle::new(
@@ -139,10 +92,17 @@ fn draw_smiley<T: DrawTarget<Color=Rgb565>>(display: &mut T) -> Result<(), T::Er
         Point::new(130, 190),
         Point::new(150, 170),
     )
-        .into_styled(PrimitiveStyle::with_fill(Rgb565::BLACK))
-        .draw(display)?;
+    .into_styled(PrimitiveStyle::with_fill(Rgb565::BLACK))
+    .draw(display)?;
 
     Ok(())
+}
+
+#[panic_handler]
+fn panic(_info: &core::panic::PanicInfo) -> ! {
+    loop {
+        software_reset();
+    }
 }
 
 #[entry]
@@ -152,9 +112,29 @@ fn main() -> ! {
 
     esp_println::logger::init_logger_from_env();
 
-    configure_screen();
+    let mut board = boards::init();
+
+    log::info!("Hello world!");
+    let (screen, board) = board.screen_peripheral();
+    configure_screen(screen);
+
+    let mut bl_level = 1;
+    let mut increase = true;
     loop {
+        if (bl_level > 99) {
+            increase = false;
+        } else if (bl_level < 1) {
+            increase = true;
+        }
         log::info!("Hello world!");
-        delay.delay(500.millis());
+        log::info!("Setting backlight to {}", bl_level);
+        //
+        delay.delay(5.millis());
+        board.screen_backlight.set_duty(bl_level).unwrap();
+        if (increase) {
+            bl_level = bl_level + 1;
+        } else {
+            bl_level = bl_level - 1;
+        }
     }
 }
