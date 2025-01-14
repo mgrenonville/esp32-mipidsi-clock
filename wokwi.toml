@@ -1,5 +1,5 @@
 [wokwi]
 version = 1
 gdbServerPort = 3333
-elf = "target/riscv32imac-unknown-none-elf/debug/test-adv-espc6"
-firmware = "target/riscv32imac-unknown-none-elf/debug/test-adv-espc6"
+elf = "target/riscv32imac-unknown-none-elf/debug/esp32-mipidsi-clock"
+firmware = "target/riscv32imac-unknown-none-elf/debug/esp32-mipidsi-clock"

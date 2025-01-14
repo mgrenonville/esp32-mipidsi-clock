@@ -114,7 +114,7 @@ fn main() -> ! {
 
     let mut board = boards::init();
 
-    log::info!("Hello world!");
+    // log::info!("Hello world!");
     let (screen, board) = board.screen_peripheral();
     configure_screen(screen);
 
@@ -126,8 +126,8 @@ fn main() -> ! {
         } else if (bl_level < 1) {
             increase = true;
         }
-        log::info!("Hello world!");
-        log::info!("Setting backlight to {}", bl_level);
+        // log::info!("Hello world!");
+        // log::info!("Setting backlight to {}", bl_level);
         //
         delay.delay(5.millis());
         board.screen_backlight.set_duty(bl_level).unwrap();

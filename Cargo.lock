@@ -388,6 +388,7 @@ dependencies = [
  "esp-hal-procmacros",
  "esp-metadata",
  "esp-riscv-rt",
+ "esp32c3",
  "esp32c6",
  "fugit",
  "nb 1.1.0",
@@ -509,6 +510,16 @@ dependencies = [
  "mipidsi",
  "smoltcp",
  "static_cell",
+]
+
+[[package]]
+name = "esp32c3"
+version = "0.25.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3922cd13da83d070892c47e66f005856c62510952198c3008bc4f3b79f3e9623"
+dependencies = [
+ "critical-section",
+ "vcell",
 ]
 
 [[package]]
