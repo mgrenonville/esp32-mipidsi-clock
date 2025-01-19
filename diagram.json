@@ -23,12 +23,12 @@
       [ "esp:RX", "$serialMonitor:TX", "", [] ],
       [ "esp:5V", "lcd1:VCC", "red", [ "h-21.83", "v-206.3", "h201.6", "v48.5" ] ],
       [ "lcd1:GND", "esp:GND.10", "black", [ "h-54.56", "v-45.08" ] ],
-      [ "lcd1:CS", "esp:4", "violet", [ "h-57.6", "v105.6" ] ],
-      [ "lcd1:MOSI", "esp:19", "green", [ "h-73.76", "v-6.68" ] ],
-      [ "lcd1:SCK", "esp:18", "green", [ "h-92.96", "v2.92" ] ],
-      [ "lcd1:LED", "esp:5", "green", [ "h-73.76", "v70.12", "h-182.4", "v-48" ] ],
-      [ "lcd1:RST", "esp:6", "green", [ "h28.8", "v9.6" ] ],
-      [ "lcd1:D/C", "esp:15",  "green", [ "h74.38", "v9.6" ] ]
+      [ "lcd1:CS", "esp:4", "violet", [  ] ],
+      [ "lcd1:MOSI", "esp:19", "green", [ ] ],
+      [ "lcd1:SCK", "esp:18", "yellow", [  ] ],
+      [ "lcd1:LED", "esp:5", "purple", [  ] ],
+      [ "lcd1:RST", "esp:6", "blue", [  ] ],
+      [ "lcd1:D/C", "esp:15",  "orange", [  ] ]
     ],
     "serialMonitor": { "display": "terminal", "convertEol": false },
     "dependencies": {}

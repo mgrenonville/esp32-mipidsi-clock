@@ -11,60 +11,24 @@ use embedded_graphics::{
     prelude::*,
     primitives::{Circle, Primitive, PrimitiveStyle, Triangle},
 };
-use embedded_hal_bus::spi::ExclusiveDevice;
+use embedded_hal_bus::spi::{ExclusiveDevice, NoDelay};
 use hal::delay::Delay;
+use hal::gpio::Output;
 use hal::peripheral::Peripheral;
 use hal::reset::software_reset;
 use hal::{gpio::AnyPin, prelude::*};
-use mipidsi::Builder;
+use mipidsi::{Builder, Display};
 // Provides the Display builder
 use mipidsi::models::ST7789;
 use mipidsi::options::{ColorInversion, Orientation, Rotation};
 
+use crate::board::types::DisplaySPI;
 use crate::board::{types, SpiScreen};
 
 mod board;
 mod boards;
 
 // Provides the parallel port and display interface builders
-
-fn init_heap() {
-    const HEAP_SIZE: usize = 32 * 1024;
-    static mut HEAP: MaybeUninit<[u8; HEAP_SIZE]> = MaybeUninit::uninit();
-
-    unsafe {
-        esp_alloc::HEAP.add_region(esp_alloc::HeapRegion::new(
-            HEAP.as_mut_ptr() as *mut u8,
-            HEAP_SIZE,
-            esp_alloc::MemoryCapability::Internal.into(),
-        ));
-    }
-}
-
-fn configure_screen(screen: SpiScreen<types::DisplaySPI>) {
-    let spi_device = ExclusiveDevice::new_no_delay(screen.spi, screen.cs_output).unwrap();
-    let mut buffer = [0_u8; 512];
-
-    // Define the display interface with no chip select
-    let di = SPIInterface::new(spi_device, screen.dc);
-    // Define the display from the display interface and initialize it
-    let mut delay = Delay::new();
-
-    let mut display = Builder::new(ST7789, di)
-        .reset_pin(screen.rst)
-        .color_order(mipidsi::options::ColorOrder::Rgb)
-        .invert_colors(ColorInversion::Inverted)
-        .orientation(Orientation::new().rotate(Rotation::Deg180))
-        .init(&mut delay)
-        .unwrap();
-
-    // Make the display all black
-    display.clear(Rgb565::BLACK).unwrap();
-    log::info!("drawing smiley face");
-
-    // Draw a smiley face with white eyes and a red mouth
-    draw_smiley(&mut display).unwrap();
-}
 
 fn draw_smiley<T: DrawTarget<Color = Rgb565>>(display: &mut T) -> Result<(), T::Error> {
     // Draw the left eye as a circle located at (50, 100), with a diameter of 40, filled with white
@@ -108,15 +72,16 @@ fn panic(_info: &core::panic::PanicInfo) -> ! {
 #[entry]
 fn main() -> ! {
     let delay = Delay::new();
-    init_heap();
+    esp_alloc::heap_allocator!(72 * 1024);
 
     esp_println::logger::init_logger_from_env();
 
     let mut board = boards::init();
 
     // log::info!("Hello world!");
-    let (screen, board) = board.screen_peripheral();
-    configure_screen(screen);
+    let (mut display, board) = board.display_peripheral();
+
+    draw_smiley(&mut display).unwrap();
 
     let mut bl_level = 1;
     let mut increase = true;
