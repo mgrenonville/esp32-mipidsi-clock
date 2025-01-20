@@ -1,36 +1,27 @@
 use display_interface_spi::SPIInterface;
 use embedded_graphics::{pixelcolor::Rgb565, prelude::*};
 use embedded_hal_bus::spi::ExclusiveDevice;
-use esp_wifi::{
-    wifi::{
-        utils::create_network_interface, AccessPointInfo, ClientConfiguration, Configuration,
-        WifiError, WifiStaDevice,
+use esp_hal::delay::Delay;
+use esp_hal::ledc::channel::config::PinConfig;
+use esp_hal::ledc::channel::ChannelIFace;
+use esp_hal::ledc::timer::Timer;
+use esp_hal::ledc::timer::TimerIFace;
+use esp_hal::ledc::{channel, timer, LSGlobalClkSource, Ledc, LowSpeed};
+use esp_hal::time::RateExtU32;
+use esp_hal::timer::timg::TimerGroup;
+use esp_hal::{
+    gpio::{Level, Output},
+    spi::{
+        master::{Config, Spi},
+        Mode,
     },
-    wifi_interface::WifiStack,
-    EspWifiInitFor,
-};
-use hal::delay::Delay;
-use hal::gpio::AnyPin;
-use hal::ledc::channel::config::PinConfig;
-use hal::ledc::timer::Timer;
-use hal::ledc::{channel, timer, LSGlobalClkSource, Ledc, LowSpeed};
-use hal::rng::Rng;
-use hal::timer::timg::TimerGroup;
-use hal::{
-    gpio::{Io, Level, Output},
-    prelude::*,
-    spi::{master::Spi, SpiMode},
-    time,
 };
 use mipidsi::models::ST7789;
 use mipidsi::options::{ColorInversion, Orientation, Rotation};
 use mipidsi::Builder;
-use smoltcp::iface::{SocketSet, SocketStorage};
-use smoltcp::wire::DhcpOption;
 
 use crate::board::types;
 use crate::board::Board;
-use crate::board::SpiScreen;
 
 macro_rules! singleton {
     ($val:expr, $T:ty) => {{
@@ -43,12 +34,16 @@ const SSID: &str = "Livebox-3580";
 const PASSWORD: &str = "";
 
 pub fn init() -> Board<types::LedChannel, (), types::DisplayImpl<ST7789>> {
-    let peripherals = hal::init(hal::Config::default());
-    let io = Io::new(peripherals.GPIO, peripherals.IO_MUX);
+    let peripherals = esp_hal::init(esp_hal::Config::default());
+
+    let timg0 = TimerGroup::new(peripherals.TIMG0);
+    esp_hal_embassy::init(timg0.timer0);
+
+    // let io = Io::new(peripherals.GPIO, peripherals.IO_MUX);
     let mut ledc = Ledc::new(peripherals.LEDC);
     ledc.set_global_slow_clock(LSGlobalClkSource::APBClk);
     let mut lstimer0 = singleton!(
-        ledc.get_timer::<LowSpeed>(timer::Number::Timer0),
+        ledc.timer::<LowSpeed>(timer::Number::Timer1),
         Timer<LowSpeed>
     );
     lstimer0
@@ -58,9 +53,9 @@ pub fn init() -> Board<types::LedChannel, (), types::DisplayImpl<ST7789>> {
             frequency: 24u32.kHz(),
         })
         .unwrap();
-    let led = Output::new(io.pins.gpio5, Level::Low);
+    let led = Output::new(peripherals.GPIO5, Level::Low);
 
-    let mut channel0 = ledc.get_channel(channel::Number::Channel0, led);
+    let mut channel0 = ledc.channel(channel::Number::Channel0, led);
     channel0
         .configure(channel::config::Config {
             timer: lstimer0,
@@ -70,23 +65,28 @@ pub fn init() -> Board<types::LedChannel, (), types::DisplayImpl<ST7789>> {
         })
         .unwrap();
 
-    let dc = Output::new(io.pins.gpio15, Level::Low);
-    let sck = io.pins.gpio18;
-    let miso = io.pins.gpio22;
-    let mosi = io.pins.gpio19;
-    let cs = io.pins.gpio4;
+    let dc = Output::new(peripherals.GPIO15, Level::Low);
+    let sck = peripherals.GPIO18;
+    let miso = peripherals.GPIO22;
+    let mosi = peripherals.GPIO19;
+    let cs = peripherals.GPIO4;
 
     // Define the reset pin as digital outputs and make it high
-    let mut rst = Output::new(io.pins.gpio6, Level::Low);
+    let mut rst = Output::new(peripherals.GPIO6, Level::Low);
     rst.set_high();
 
     // Define the SPI pins and create the SPI interface
-    let spi: types::DisplaySPI = Spi::new(peripherals.SPI2, 60u32.MHz(), SpiMode::Mode0).with_pins(
-        sck,
-        mosi,
-        miso,
-        hal::gpio::NoPin,
-    );
+    let spi = Spi::new(
+        peripherals.SPI2,
+        Config::default()
+            .with_frequency(60u32.MHz())
+            .with_mode(Mode::_0),
+    )
+    .unwrap()
+    .with_sck(sck)
+    .with_mosi(mosi)
+    .with_miso(miso);
+    // .with_cs(cs);
 
     let cs_output = Output::new(cs, Level::High);
 

@@ -12,22 +12,23 @@ esp-backtrace = { version = "0.14.2", features = [
     "panic-handler",
     "println",
 ] }
+esp-alloc = { version = "0.5.0" }
+esp-println = { version = "0.12.0", features = ["esp32c6", "log"] }
+esp-wifi = { version = "0.12.0", features = [
+    "esp32c6",
+
+] }
+
+# embassy
+esp-hal-embassy = { version = "0.6.0", features = ["esp32c6"] }
+embassy-time = "0.4.0"
+embassy-executor = "0.7.0"
 
 embedded-hal-bus = { version = "0.2.0" }
-
-esp-println = { version = "0.12.0", features = ["esp32c6", "log"] }
 static_cell = "2.1.0"
 
 log = { version = "0.4.22" }
-esp-alloc = { version = "0.5.0" }
 embedded-io = "0.6.1"
-esp-wifi = { version = "0.10.1", features = [
-    "esp32c6",
-    "phy-enable-usb",
-    "utils",
-    "wifi",
-    "tcp",
-] }
 heapless = { version = "0.8.0", default-features = false }
 smoltcp = { version = "0.11.0", default-features = false, features = [
     "medium-ethernet",
@@ -48,19 +49,19 @@ mipidsi = "0.8.0"
 
 [features]
 default = []
-esp32-c3 = ["hal/esp32c3", "esp-println/esp32c3", "esp-wifi/esp32c3", "esp-backtrace/esp32c3"]
-esp32-c6 = ["hal/esp32c6", "esp-println/esp32c6", "esp-wifi/esp32c6", "esp-backtrace/esp32c6"]
+esp32-c3 = ["esp-hal/esp32c3", "esp-println/esp32c3", "esp-wifi/esp32c3", "esp-backtrace/esp32c3"]
+esp32-c6 = ["esp-hal/esp32c6", "esp-println/esp32c6", "esp-wifi/esp32c6", "esp-backtrace/esp32c6"]
 
 
 [target.riscv32imac-unknown-none-elf.dependencies]
-hal = { package = "esp-hal", version = "0.21.1", features = ["esp32c6"] }
+esp-hal = { version = "0.23.1", features = ["esp32c6"] }
 
 [target.riscv32imac-unknown-none-elf.features]
 default = ["esp32-c6"]
 
 
 [target.riscv32imc-unknown-none-elf.dependencies]
-hal = { package = "esp-hal", version = "0.21.1", features = ["esp32c3"] }
+esp-hal = { version = "0.23.1", features = ["esp32c3"] }
 [target.riscv32imc-unknown-none-elf.features]
 default = ["esp32-c3"]
 
