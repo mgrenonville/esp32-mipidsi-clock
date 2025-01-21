@@ -12,19 +12,19 @@ use embedded_graphics::{
 use board::types::ChannelIFace;
 use embassy_time::Duration;
 
-use embassy_executor::Spawner;
-use esp_hal::reset::software_reset;
 use crate::board::types::LedChannel;
+use embassy_executor::Spawner;
 use embassy_time::Timer;
+use esp_hal::reset::software_reset;
 use esp_println::println;
 
 mod board;
-mod dmaspi;
 mod boards;
+mod dmaspi;
 
 // Provides the parallel port and display interface builders
 
-fn draw_smiley<T: DrawTarget<Color=Rgb565>>(display: &mut T) -> Result<(), T::Error> {
+fn draw_smiley<T: DrawTarget<Color = Rgb565>>(display: &mut T) -> Result<(), T::Error> {
     // Draw the left eye as a circle located at (50, 100), with a diameter of 40, filled with white
     Circle::new(Point::new(50, 100), 40)
         .into_styled(PrimitiveStyle::with_fill(Rgb565::WHITE))
@@ -41,8 +41,8 @@ fn draw_smiley<T: DrawTarget<Color=Rgb565>>(display: &mut T) -> Result<(), T::Er
         Point::new(130, 200),
         Point::new(160, 170),
     )
-        .into_styled(PrimitiveStyle::with_fill(Rgb565::RED))
-        .draw(display)?;
+    .into_styled(PrimitiveStyle::with_fill(Rgb565::RED))
+    .draw(display)?;
 
     // Cover the top part of the mouth with a black triangle so it looks closed instead of open
     Triangle::new(
@@ -50,8 +50,8 @@ fn draw_smiley<T: DrawTarget<Color=Rgb565>>(display: &mut T) -> Result<(), T::Er
         Point::new(130, 190),
         Point::new(150, 170),
     )
-        .into_styled(PrimitiveStyle::with_fill(Rgb565::BLACK))
-        .draw(display)?;
+    .into_styled(PrimitiveStyle::with_fill(Rgb565::BLACK))
+    .draw(display)?;
 
     Ok(())
 }
@@ -94,10 +94,8 @@ async fn run() {
     }
 }
 
-
 #[esp_hal_embassy::main]
 async fn main(spawner: Spawner) {
-
     esp_alloc::heap_allocator!(72 * 1024);
     esp_println::logger::init_logger_from_env();
     let board = boards::init();

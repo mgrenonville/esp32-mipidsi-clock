@@ -1,7 +1,7 @@
-use display_interface_spi::SPIInterface;
 use embedded_graphics::{pixelcolor::Rgb565, prelude::*};
 use embedded_hal_bus::spi::ExclusiveDevice;
 use esp_hal::delay::Delay;
+use esp_hal::dma::{DmaRxBuf, DmaTxBuf};
 use esp_hal::ledc::channel::config::PinConfig;
 use esp_hal::ledc::channel::ChannelIFace;
 use esp_hal::ledc::timer::Timer;
@@ -9,11 +9,15 @@ use esp_hal::ledc::timer::TimerIFace;
 use esp_hal::ledc::{channel, timer, LSGlobalClkSource, Ledc, LowSpeed};
 use esp_hal::time::RateExtU32;
 use esp_hal::timer::timg::TimerGroup;
-use esp_hal::{dma_buffers, gpio::{Level, Output}, spi::{
-    master::{Config, Spi},
-    Mode,
-}};
-use esp_hal::dma::{DmaRxBuf, DmaTxBuf};
+use esp_hal::{
+    dma_buffers,
+    gpio::{Level, Output},
+    spi::{
+        master::{Config, Spi},
+        Mode,
+    },
+};
+use mipidsi::interface::SpiInterface;
 use mipidsi::models::ST7789;
 use mipidsi::options::{ColorInversion, Orientation, Rotation};
 use mipidsi::Builder;
@@ -93,7 +97,8 @@ pub fn init() -> Board<types::LedChannel, (), types::DisplayImpl<ST7789>> {
     let spi_device = ExclusiveDevice::new_no_delay(spi, cs_output).unwrap();
 
     // Define the display interface with no chip select
-    let di = SPIInterface::new(spi_device, dc);
+    let buffer = singleton!([0_u8; 512], [u8; 512]);
+    let di = SpiInterface::new(spi_device, dc, buffer);
     // Define the display from the display interface and initialize it
     let mut delay = Delay::new();
 

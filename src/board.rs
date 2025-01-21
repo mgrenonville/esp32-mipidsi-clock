@@ -1,12 +1,12 @@
 use esp_hal::gpio::Output;
 
 pub mod types {
-    use display_interface_spi::SPIInterface;
     use embedded_hal_bus::spi::{ExclusiveDevice, NoDelay};
     use esp_hal::gpio::Output;
     use esp_hal::ledc::channel::Channel;
     pub use esp_hal::ledc::channel::ChannelIFace;
-    
+    use mipidsi::interface::SpiInterface;
+
     use esp_hal::ledc::LowSpeed;
     use esp_hal::spi::master::Spi;
     use esp_hal::Blocking;
@@ -17,7 +17,11 @@ pub mod types {
 
     pub type LedChannel = Channel<'static, LowSpeed>;
     pub type DisplayImpl<T> = Display<
-        SPIInterface<ExclusiveDevice<DisplaySPI, Output<'static>, NoDelay>, Output<'static>>,
+        SpiInterface<
+            'static,
+            ExclusiveDevice<DisplaySPI, Output<'static>, NoDelay>,
+            Output<'static>,
+        >,
         T,
         Output<'static>,
     >;
