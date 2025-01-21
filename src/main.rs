@@ -10,12 +10,16 @@ use embedded_graphics::{
 };
 
 use board::types::ChannelIFace;
+use embassy_time::Duration;
+
 use embassy_executor::Spawner;
 use esp_hal::reset::software_reset;
 use crate::board::types::LedChannel;
 use embassy_time::Timer;
+use esp_println::println;
 
 mod board;
+mod dmaspi;
 mod boards;
 
 // Provides the parallel port and display interface builders
@@ -62,6 +66,7 @@ fn panic(_info: &core::panic::PanicInfo) -> ! {
 #[embassy_executor::task]
 async fn fade_screen(bl: LedChannel) {
     let mut bl_level = 1;
+
     let mut increase = true;
     loop {
         if bl_level > 99 {
@@ -69,8 +74,7 @@ async fn fade_screen(bl: LedChannel) {
         } else if bl_level < 1 {
             increase = true;
         }
-        // log::info!("Hello world!");
-        log::info!("Setting backlight to {}", bl_level);
+        esp_println::println!("Setting backlight to {}", bl_level);
 
         Timer::after_millis(50).await;
         bl.set_duty(bl_level).unwrap();
@@ -82,17 +86,27 @@ async fn fade_screen(bl: LedChannel) {
     }
 }
 
+#[embassy_executor::task]
+async fn run() {
+    loop {
+        esp_println::println!("Hello world from embassy using esp-hal-async!");
+        Timer::after(Duration::from_millis(1_000)).await;
+    }
+}
+
+
 #[esp_hal_embassy::main]
-async fn main(spawner: Spawner) -> ! {
+async fn main(spawner: Spawner) {
+
     esp_alloc::heap_allocator!(72 * 1024);
-
     esp_println::logger::init_logger_from_env();
-
-    let mut board = boards::init();
-
-    // log::info!("Hello world!");
+    let board = boards::init();
     let (mut display, board) = board.display_peripheral();
-    spawner.spawn(fade_screen(board.screen_backlight)).unwrap();
+    spawner.spawn(fade_screen(board.screen_backlight)).ok();
+
     draw_smiley(&mut display).unwrap();
-    loop {}
+    // If looping, don't forget to await something, otherwise the program will just hang
+    // loop {
+    //     Timer::after(Duration::from_millis(5_000)).await;
+    // }
 }

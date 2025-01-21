@@ -1,5 +1,4 @@
 use esp_hal::gpio::Output;
-use esp_hal::timer::Timer;
 
 pub mod types {
     use display_interface_spi::SPIInterface;
@@ -7,7 +6,7 @@ pub mod types {
     use esp_hal::gpio::Output;
     use esp_hal::ledc::channel::Channel;
     pub use esp_hal::ledc::channel::ChannelIFace;
-    pub use esp_hal::ledc::timer::TimerIFace;
+    
     use esp_hal::ledc::LowSpeed;
     use esp_hal::spi::master::Spi;
     use esp_hal::Blocking;

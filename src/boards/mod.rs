@@ -9,13 +9,11 @@ use esp_hal::ledc::timer::TimerIFace;
 use esp_hal::ledc::{channel, timer, LSGlobalClkSource, Ledc, LowSpeed};
 use esp_hal::time::RateExtU32;
 use esp_hal::timer::timg::TimerGroup;
-use esp_hal::{
-    gpio::{Level, Output},
-    spi::{
-        master::{Config, Spi},
-        Mode,
-    },
-};
+use esp_hal::{dma_buffers, gpio::{Level, Output}, spi::{
+    master::{Config, Spi},
+    Mode,
+}};
+use esp_hal::dma::{DmaRxBuf, DmaTxBuf};
 use mipidsi::models::ST7789;
 use mipidsi::options::{ColorInversion, Orientation, Rotation};
 use mipidsi::Builder;
@@ -39,10 +37,9 @@ pub fn init() -> Board<types::LedChannel, (), types::DisplayImpl<ST7789>> {
     let timg0 = TimerGroup::new(peripherals.TIMG0);
     esp_hal_embassy::init(timg0.timer0);
 
-    // let io = Io::new(peripherals.GPIO, peripherals.IO_MUX);
     let mut ledc = Ledc::new(peripherals.LEDC);
     ledc.set_global_slow_clock(LSGlobalClkSource::APBClk);
-    let mut lstimer0 = singleton!(
+    let lstimer0 = singleton!(
         ledc.timer::<LowSpeed>(timer::Number::Timer1),
         Timer<LowSpeed>
     );
@@ -75,6 +72,10 @@ pub fn init() -> Board<types::LedChannel, (), types::DisplayImpl<ST7789>> {
     let mut rst = Output::new(peripherals.GPIO6, Level::Low);
     rst.set_high();
 
+    let (rx_buffer, rx_descriptors, tx_buffer, tx_descriptors) = dma_buffers!(32, 240);
+    let dma_rx_buf = DmaRxBuf::new(rx_descriptors, rx_buffer).unwrap();
+    let dma_tx_buf = DmaTxBuf::new(tx_descriptors, tx_buffer).unwrap();
+
     // Define the SPI pins and create the SPI interface
     let spi = Spi::new(
         peripherals.SPI2,
@@ -85,8 +86,7 @@ pub fn init() -> Board<types::LedChannel, (), types::DisplayImpl<ST7789>> {
     .unwrap()
     .with_sck(sck)
     .with_mosi(mosi)
-    .with_miso(miso);
-    // .with_cs(cs);
+    .with_miso(miso); //.with_dma(peripherals.DMA_CH0).with_buffers(dma_rx_buf, dma_tx_buf);
 
     let cs_output = Output::new(cs, Level::High);
 
