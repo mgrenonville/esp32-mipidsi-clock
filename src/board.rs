@@ -5,6 +5,7 @@ pub mod types {
     use esp_hal::gpio::Output;
     use esp_hal::ledc::channel::Channel;
     pub use esp_hal::ledc::channel::ChannelIFace;
+    use esp_hal::spi::master::SpiDmaBus;
     use mipidsi::interface::SpiInterface;
 
     use esp_hal::ledc::LowSpeed;
@@ -13,7 +14,7 @@ pub mod types {
     use mipidsi::Display;
 
     // pub type SPI =  peripherals.SPI2,
-    pub type DisplaySPI = Spi<'static, Blocking>;
+    pub type DisplaySPI = SpiDmaBus<'static, Blocking>;
 
     pub type LedChannel = Channel<'static, LowSpeed>;
     pub type DisplayImpl<T> = Display<

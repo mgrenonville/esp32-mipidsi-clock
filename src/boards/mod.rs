@@ -76,7 +76,7 @@ pub fn init() -> Board<types::LedChannel, (), types::DisplayImpl<ST7789>> {
     let mut rst = Output::new(peripherals.GPIO6, Level::Low);
     rst.set_high();
 
-    let (rx_buffer, rx_descriptors, tx_buffer, tx_descriptors) = dma_buffers!(32, 240);
+    let (rx_buffer, rx_descriptors, tx_buffer, tx_descriptors) = dma_buffers!(3200, 3200);
     let dma_rx_buf = DmaRxBuf::new(rx_descriptors, rx_buffer).unwrap();
     let dma_tx_buf = DmaTxBuf::new(tx_descriptors, tx_buffer).unwrap();
 
@@ -90,7 +90,9 @@ pub fn init() -> Board<types::LedChannel, (), types::DisplayImpl<ST7789>> {
     .unwrap()
     .with_sck(sck)
     .with_mosi(mosi)
-    .with_miso(miso); //.with_dma(peripherals.DMA_CH0).with_buffers(dma_rx_buf, dma_tx_buf);
+    .with_miso(miso)
+    .with_dma(peripherals.DMA_CH0)
+    .with_buffers(dma_rx_buf, dma_tx_buf);
 
     let cs_output = Output::new(cs, Level::High);
 
