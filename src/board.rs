@@ -5,8 +5,8 @@ pub mod types {
     use esp_hal::gpio::Output;
     use esp_hal::ledc::channel::Channel;
     pub use esp_hal::ledc::channel::ChannelIFace;
-    use esp_hal::spi::master::SpiDmaBus;
     use mipidsi::interface::SpiInterface;
+    use esp_hal::spi::master::SpiDmaBus;
 
     use esp_hal::ledc::LowSpeed;
     use esp_hal::spi::master::Spi;

@@ -1,5 +1,6 @@
+use alloc::string::ToString;
 use embedded_graphics::{pixelcolor::Rgb565, prelude::*};
-use embedded_hal_bus::spi::ExclusiveDevice;
+use embedded_hal_bus::spi::{ExclusiveDevice, NoDelay};
 use esp_hal::delay::Delay;
 use esp_hal::dma::{DmaRxBuf, DmaTxBuf};
 use esp_hal::ledc::channel::config::PinConfig;
@@ -17,10 +18,11 @@ use esp_hal::{
         Mode,
     },
 };
+use esp_hal::clock::CpuClock;
 use mipidsi::interface::SpiInterface;
 use mipidsi::models::ST7789;
-use mipidsi::options::{ColorInversion, Orientation, Rotation};
-use mipidsi::Builder;
+use mipidsi::options::{ColorInversion, Orientation, Rotation, TearingEffect};
+use mipidsi::{Builder, Display};
 
 use crate::board::types;
 use crate::board::Board;
@@ -36,7 +38,11 @@ const SSID: &str = "Livebox-3580";
 const PASSWORD: &str = "";
 
 pub fn init() -> Board<types::LedChannel, (), types::DisplayImpl<ST7789>> {
-    let peripherals = esp_hal::init(esp_hal::Config::default());
+    let mut config = esp_hal::Config::default();
+    config.cpu_clock = CpuClock::_160MHz;
+    let peripherals = esp_hal::init(config);
+
+    // log::info!("running at {}", peripherals.);
 
     let timg0 = TimerGroup::new(peripherals.TIMG0);
     esp_hal_embassy::init(timg0.timer0);
@@ -99,7 +105,7 @@ pub fn init() -> Board<types::LedChannel, (), types::DisplayImpl<ST7789>> {
     let spi_device = ExclusiveDevice::new_no_delay(spi, cs_output).unwrap();
 
     // Define the display interface with no chip select
-    let buffer = singleton!([0_u8; 512], [u8; 512]);
+    let buffer = singleton!([0_u8; 240], [u8; 240]);
     let di = SpiInterface::new(spi_device, dc, buffer);
     // Define the display from the display interface and initialize it
     let mut delay = Delay::new();
@@ -108,12 +114,17 @@ pub fn init() -> Board<types::LedChannel, (), types::DisplayImpl<ST7789>> {
         .reset_pin(rst)
         .color_order(mipidsi::options::ColorOrder::Rgb)
         .invert_colors(ColorInversion::Inverted)
-        .orientation(Orientation::new().rotate(Rotation::Deg180))
+        // .orientation(Orientation::new().rotate(Rotation::Deg180))
         .init(&mut delay)
         .unwrap();
 
-    // Make the display all black
+    // Make the display all
+    match display.set_tearing_effect(TearingEffect::Vertical) {
+        Ok(_) => log::info!("set_tearing_effect successful"),
+        Err(e) => log::info!("set_tearing_effect failed"),
+    };
     display.clear(Rgb565::BLACK).unwrap();
+
 
     /*
         // wifi:
