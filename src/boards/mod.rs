@@ -1,6 +1,7 @@
 use alloc::string::ToString;
 use embedded_graphics::{pixelcolor::Rgb565, prelude::*};
 use embedded_hal_bus::spi::{ExclusiveDevice, NoDelay};
+use esp_hal::clock::CpuClock;
 use esp_hal::delay::Delay;
 use esp_hal::dma::{DmaRxBuf, DmaTxBuf};
 use esp_hal::ledc::channel::config::PinConfig;
@@ -18,7 +19,6 @@ use esp_hal::{
         Mode,
     },
 };
-use esp_hal::clock::CpuClock;
 use mipidsi::interface::SpiInterface;
 use mipidsi::models::ST7789;
 use mipidsi::options::{ColorInversion, Orientation, Rotation, TearingEffect};
@@ -98,7 +98,8 @@ pub fn init() -> Board<types::LedChannel, (), types::DisplayImpl<ST7789>> {
     .with_mosi(mosi)
     .with_miso(miso)
     .with_dma(peripherals.DMA_CH0)
-    .with_buffers(dma_rx_buf, dma_tx_buf);
+    .with_buffers(dma_rx_buf, dma_tx_buf)
+    .into_async();
 
     let cs_output = Output::new(cs, Level::High);
 
@@ -124,7 +125,6 @@ pub fn init() -> Board<types::LedChannel, (), types::DisplayImpl<ST7789>> {
         Err(e) => log::info!("set_tearing_effect failed"),
     };
     display.clear(Rgb565::BLACK).unwrap();
-
 
     /*
         // wifi:
