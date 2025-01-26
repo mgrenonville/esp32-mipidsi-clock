@@ -2,13 +2,19 @@ use core::cell::{Cell, Ref, RefCell, RefMut};
 
 use alloc::rc::Rc;
 use embassy_executor::Spawner;
+use embassy_time::{Duration, Timer};
 use embedded_graphics::{pixelcolor::raw::RawU16, prelude::Dimensions};
 use esp_hal::{gpio::Output, time, timer::systimer::SystemTimer};
+use esp_hal_embassy::Executor;
 use mipidsi::{
     interface::InterfacePixelFormat,
     models::{Model, ST7789},
 };
+use slint::{platform::software_renderer::MinimalSoftwareWindow, Window};
+use static_cell::StaticCell;
 use types::DisplayImpl;
+
+use crate::boards;
 
 pub mod types {
     use embedded_hal_bus::spi::{ExclusiveDevice, NoDelay};
@@ -36,6 +42,13 @@ pub mod types {
         T,
         Output<'static>,
     >;
+}
+
+macro_rules! singleton {
+    ($val:expr, $T:ty) => {{
+        static STATIC_CELL: ::static_cell::StaticCell<$T> = ::static_cell::StaticCell::new();
+        STATIC_CELL.init($val)
+    }};
 }
 
 // https://github.com/SlimeVR/SlimeVR-Rust/blob/main/firmware/src/peripherals/mod.rs
@@ -123,25 +136,114 @@ impl<Backlight, ScreenSpi, Display> Board<Backlight, ScreenSpi, Display> {
 }
 
 // #[derive(Default)]
-pub struct EspBackend {
-    window: RefCell<Option<Rc<slint::platform::software_renderer::MinimalSoftwareWindow>>>,
-    // spawner: Spawner,
-    display: RefCell<DisplayImpl<ST7789>>,
-}
-impl EspBackend {
-    pub fn new(display: DisplayImpl<ST7789> /* spawner: Spawner */) -> EspBackend {
-        EspBackend {
-            window: RefCell::default(),
-            // spawner,
-            display: RefCell::new((display)),
+
+#[embassy_executor::task]
+async fn refresh_screen(
+    window: RefCell<Option<Rc<MinimalSoftwareWindow>>>,
+    display: DisplayImpl<ST7789>,
+) {
+    // let display = displayRef;
+
+    let mut buffer_provider = DrawBuffer {
+        display: display,
+        buffer: &mut [slint::platform::software_renderer::Rgb565Pixel(0); 240],
+    };
+    if let Some(window) = window.borrow().as_ref().clone() {
+        loop {
+            slint::platform::update_timers_and_animations();
+            // let mut event_count = 0;
+            // The hardware keeps a queue of events. We should ideally process all event from the queue before rendering
+            // or we will get outdated event in the next frames. But move events are constantly added to the queue
+            // so we would block the whole interface, so add an arbitrary threshold
+            // while event_count < 15 && touch.data_available().unwrap() {
+            //     event_count += 1;
+            //     match touch.event() {
+            //         // Ignore error because we sometimes get an error at the beginning
+            //         Err(_) => (),
+            //         Ok(tt21100::Event::Button(..)) => (),
+            //         Ok(tt21100::Event::Touch { report: _, touches }) => {
+            //             let button = slint::platform::PointerEventButton::Left;
+            //             if let Some(event) = touches
+            //                 .0
+            //                 .map(|record| {
+            //                     let position = slint::PhysicalPosition::new(
+            //                         ((319. - record.x as f32) * size.width as f32 / 319.) as _,
+            //                         (record.y as f32 * size.height as f32 / 239.) as _,
+            //                     )
+            //                     .to_logical(window.scale_factor());
+            //                     match last_touch.replace(position) {
+            //                         Some(_) => WindowEvent::PointerMoved { position },
+            //                         None => WindowEvent::PointerPressed { position, button },
+            //                     }
+            //                 })
+            //                 .or_else(|| {
+            //                     last_touch.take().map(|position| WindowEvent::PointerReleased {
+            //                         position,
+            //                         button,
+            //                     })
+            //                 })
+            //             {
+            //                 let is_pointer_release_event =
+            //                     matches!(event, WindowEvent::PointerReleased { .. });
+
+            //                 window.try_dispatch_event(event)?;
+
+            //                 // removes hover state on widgets
+            //                 if is_pointer_release_event {
+            //                     window.try_dispatch_event(WindowEvent::PointerExited)?;
+            //                 }
+            //             }
+            //         }
+            //     }
+            // }
+
+            window.draw_if_needed(|renderer| {
+                renderer.render_by_line(&mut buffer_provider);
+            });
+            if window.has_active_animations() {
+                continue;
+            }
+            Timer::after(Duration::from_millis(1)).await;
         }
     }
 }
 
 #[embassy_executor::task]
-async fn refresh_screen() {}
+async fn embassy_main(spawner: Spawner, window: RefCell<Option<Rc<MinimalSoftwareWindow>>>) -> ! {
+    let board = boards::init();
 
-impl slint::platform::Platform for EspBackend {
+    let (display, board) = board.display_peripheral();
+
+    // let display = self.display.borrow_mut();
+
+    use embedded_graphics::geometry::OriginDimensions;
+
+    let size = display.size();
+    let size = slint::PhysicalSize::new(size.width, size.height);
+
+    window.borrow().as_ref().unwrap().set_size(size);
+
+    // let window = singleton!(x, Option<&Rc<MinimalSoftwareWindow>>);
+
+    spawner.spawn(refresh_screen(window, display)).unwrap();
+    // spawner.spawn(refresh_screen(self.window));
+    loop {
+        Timer::after(Duration::from_millis(5_000)).await;
+    }
+}
+
+pub struct EspEmbassyBackend {
+    window: RefCell<Option<Rc<MinimalSoftwareWindow>>>,
+}
+impl EspEmbassyBackend {
+    pub fn new() -> EspEmbassyBackend {
+        EspEmbassyBackend {
+            window: RefCell::default(),
+        }
+    }
+}
+
+impl slint::platform::Platform for EspEmbassyBackend {
     fn create_window_adapter(
         &self,
     ) -> Result<Rc<dyn slint::platform::WindowAdapter>, slint::PlatformError> {
@@ -157,79 +259,10 @@ impl slint::platform::Platform for EspBackend {
     }
 
     fn run_event_loop(&self) -> Result<(), slint::PlatformError> {
-        let display = self.display.borrow_mut();
+        let executor = singleton!(Executor::new(), Executor);
 
-        use embedded_graphics::geometry::OriginDimensions;
-
-        let size = display.size();
-        let size = slint::PhysicalSize::new(size.width, size.height);
-
-        self.window.borrow().as_ref().unwrap().set_size(size);
-
-        let mut buffer_provider = DrawBuffer {
-            display: display,
-            buffer: &mut [slint::platform::software_renderer::Rgb565Pixel(0); 240],
-        };
-
-        loop {
-            slint::platform::update_timers_and_animations();
-
-            if let Some(window) = self.window.borrow().clone() {
-                // let mut event_count = 0;
-                // The hardware keeps a queue of events. We should ideally process all event from the queue before rendering
-                // or we will get outdated event in the next frames. But move events are constantly added to the queue
-                // so we would block the whole interface, so add an arbitrary threshold
-                // while event_count < 15 && touch.data_available().unwrap() {
-                //     event_count += 1;
-                //     match touch.event() {
-                //         // Ignore error because we sometimes get an error at the beginning
-                //         Err(_) => (),
-                //         Ok(tt21100::Event::Button(..)) => (),
-                //         Ok(tt21100::Event::Touch { report: _, touches }) => {
-                //             let button = slint::platform::PointerEventButton::Left;
-                //             if let Some(event) = touches
-                //                 .0
-                //                 .map(|record| {
-                //                     let position = slint::PhysicalPosition::new(
-                //                         ((319. - record.x as f32) * size.width as f32 / 319.) as _,
-                //                         (record.y as f32 * size.height as f32 / 239.) as _,
-                //                     )
-                //                     .to_logical(window.scale_factor());
-                //                     match last_touch.replace(position) {
-                //                         Some(_) => WindowEvent::PointerMoved { position },
-                //                         None => WindowEvent::PointerPressed { position, button },
-                //                     }
-                //                 })
-                //                 .or_else(|| {
-                //                     last_touch.take().map(|position| WindowEvent::PointerReleased {
-                //                         position,
-                //                         button,
-                //                     })
-                //                 })
-                //             {
-                //                 let is_pointer_release_event =
-                //                     matches!(event, WindowEvent::PointerReleased { .. });
-
-                //                 window.try_dispatch_event(event)?;
-
-                //                 // removes hover state on widgets
-                //                 if is_pointer_release_event {
-                //                     window.try_dispatch_event(WindowEvent::PointerExited)?;
-                //                 }
-                //             }
-                //         }
-                //     }
-                // }
-
-                window.draw_if_needed(|renderer| {
-                    renderer.render_by_line(&mut buffer_provider);
-                });
-                if window.has_active_animations() {
-                    continue;
-                }
-            }
-            // TODO
-        }
+        executor
+            .run(|spawner: Spawner| spawner.must_spawn(embassy_main(spawner, self.window.clone())))
     }
 
     fn debug_log(&self, arguments: core::fmt::Arguments) {
@@ -243,7 +276,7 @@ struct DrawBuffer<'a, Display> {
 }
 
 impl slint::platform::software_renderer::LineBufferProvider
-    for &mut DrawBuffer<'_, RefMut<'_, DisplayImpl<ST7789>>>
+    for &mut DrawBuffer<'_, DisplayImpl<ST7789>>
 {
     type TargetPixel = slint::platform::software_renderer::Rgb565Pixel;
 

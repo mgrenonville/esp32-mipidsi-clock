@@ -17,7 +17,7 @@ use embedded_graphics::{
 use alloc::{boxed::Box, format};
 use embedded_graphics_framebuf::FrameBuf;
 
-use board::{types::ChannelIFace, EspBackend};
+use board::{types::ChannelIFace, EspEmbassyBackend};
 use embassy_time::Duration;
 
 use crate::board::types::LedChannel;
@@ -27,9 +27,10 @@ use embedded_graphics::mono_font::iso_8859_15::FONT_7X13_BOLD;
 use embedded_graphics::mono_font::MonoTextStyle;
 use embedded_graphics::primitives::Rectangle;
 use embedded_graphics::text::{Alignment, Text};
-use esp_hal::reset::software_reset;
-use esp_hal::time;
+use esp_hal::{main, reset::software_reset};
 
+use esp_hal::time;
+use esp_hal_embassy::Executor;
 mod board;
 mod boards;
 mod dmaspi;
@@ -108,17 +109,14 @@ async fn fade_screen(bl: LedChannel) {
     }
 }
 
-#[esp_hal_embassy::main]
-async fn main(spawner: Spawner) {
+#[main]
+fn main() -> ! {
     esp_alloc::heap_allocator!(50 * 1024);
     esp_println::logger::init_logger_from_env();
-    let board = boards::init();
 
-    let (mut display, board) = board.display_peripheral();
-    slint::platform::set_platform(Box::new(EspBackend::new(display)))
+    slint::platform::set_platform(Box::new(EspEmbassyBackend::new()))
         .expect("backend already initialized");
-
-    spawner.spawn(fade_screen(board.screen_backlight)).ok();
+    // spawner.spawn(fade_screen(board.screen_backlight)).ok();
     let main_window = Recipe::new().unwrap();
 
     let state = main_window.clone_strong();
@@ -172,4 +170,5 @@ async fn main(spawner: Spawner) {
 
     //     i = i + 1;
     // }
+    loop {}
 }
