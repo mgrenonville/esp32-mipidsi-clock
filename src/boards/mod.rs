@@ -82,7 +82,7 @@ pub fn init() -> Board<types::LedChannel, (), types::DisplayImpl<ST7789>> {
     let mut rst = Output::new(peripherals.GPIO6, Level::Low);
     rst.set_high();
 
-    let (rx_buffer, rx_descriptors, tx_buffer, tx_descriptors) = dma_buffers!(3200, 3200);
+    let (rx_buffer, rx_descriptors, tx_buffer, tx_descriptors) = dma_buffers!(2400, 2400);
     let dma_rx_buf = DmaRxBuf::new(rx_descriptors, rx_buffer).unwrap();
     let dma_tx_buf = DmaTxBuf::new(tx_descriptors, tx_buffer).unwrap();
 
@@ -113,6 +113,7 @@ pub fn init() -> Board<types::LedChannel, (), types::DisplayImpl<ST7789>> {
 
     let mut display = Builder::new(ST7789, di)
         .reset_pin(rst)
+        .display_size(240, 240)
         .color_order(mipidsi::options::ColorOrder::Rgb)
         .invert_colors(ColorInversion::Inverted)
         // .orientation(Orientation::new().rotate(Rotation::Deg180))

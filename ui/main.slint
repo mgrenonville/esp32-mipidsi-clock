@@ -3,26 +3,50 @@ import { HorizontalBox, VerticalBox, Button } from "std-widgets.slint";
 component Circle inherits Image {
     width: 21px;
     height: 18px;
-    source: @image-url("./img/salameche.png");
+    
     // border-radius: root.width / 2;
 }
 
 export component Recipe inherits Window {
     in-out property <int> counter: 0;
+    height: 240px;
+    width: 240px;
     states [
         left-aligned when counter > 0: {
-            circle1.x: 0px; circle1.y: 40px;
-            circle2.x: 0px; circle2.y: 0px;
+            circle1.x: 0px;
+            circle1.y: 40px;
+            circle2.x: 0px;
+            circle2.y: 0px;
+            circle1.source: @image-url("./img/salameche-left.png");
+            circle2.source: @image-url("./img/salameche-left.png");
             in {
-                animate circle1.x, circle2.x { duration: 250ms; }
+                animate circle1.x, circle2.x {
+                    duration: 750ms;
+                    easing: ease-in-out-circ;
+                }
+                animate circle1.y, circle2.y {
+                    duration: 250ms;
+                    easing: ease-in-out-circ;
+                }
             }
             out {
-                animate circle1.x, circle2.x { duration: 500ms; }
+                animate circle1.x, circle2.x {
+                    duration: 750ms;
+                    easing: ease-in-out-circ;
+                }
+                animate circle1.y, circle2.y {
+                    duration: 250ms;
+                    easing: ease-in-out-circ;
+                }
             }
         }
         right-aligned when counter <= 0: {
-            circle1.x: 170px; circle1.y: 70px;
-            circle2.x: 170px; circle2.y: 00px;
+            circle1.source: @image-url("./img/salameche-right.png");
+            circle2.source: @image-url("./img/salameche-right.png");
+            circle1.x: 220px;
+            circle1.y: 70px;
+            circle2.x: 220px;
+            circle2.y: 00px;
         }
     ]
 
@@ -32,6 +56,23 @@ export component Recipe inherits Window {
             image-fit: ImageFit.fill;
             source: @image-url("./img/backgroung.jpg");
             // image-fit default is `contain` when in layout, preserving aspect ratio
+            Rectangle {
+                
+                // background: root.background.darker(20%);
+                width: 240px;
+                x: 0px;
+                y: 139px;
+                height: 100px;
+                circle1 := Circle {
+                    y: 0;
+                    x: 85px;
+                }
+
+                circle2 := Circle {
+                    x: 85px;
+                    y: 40px;
+                }
+            }
         }
     }
 
@@ -41,14 +82,6 @@ export component Recipe inherits Window {
             b1 := Button {
                 text: "Press and hold to change state";
             }
-        }
-        Rectangle {
-            // background: root.background.darker(20%);
-            width: 250px;
-            height: 100px;
-
-            circle1 := Circle { y:0;  x: 85px; }
-            circle2 := Circle { x: 85px; y: 40px; }
         }
     }
 }
