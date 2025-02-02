@@ -1,13 +1,14 @@
 import { HorizontalBox, VerticalBox, Button } from "std-widgets.slint";
+import "assets/editundo.ttf";
 
 component Circle inherits Image {
-    width: 21px;
-    height: 18px;
+    
     
     // border-radius: root.width / 2;
 }
 
 export component Recipe inherits Window {
+    default-font-family: "Edit Undo BRK";
     in-out property <int> counter: 0;
     height: 240px;
     width: 240px;
@@ -17,7 +18,7 @@ export component Recipe inherits Window {
             circle1.y: 40px;
             circle2.x: 0px;
             circle2.y: 0px;
-            circle1.source: @image-url("./img/salameche-left.png");
+            circle1.source: @image-url("./img/test-factor-20-palette-16.png");
             circle2.source: @image-url("./img/salameche-left.png");
             in {
                 animate circle1.x, circle2.x {
@@ -41,7 +42,7 @@ export component Recipe inherits Window {
             }
         }
         right-aligned when counter <= 0: {
-            circle1.source: @image-url("./img/salameche-right.png");
+            circle1.source: @image-url("./img/test-factor-20-palette-16.png");
             circle2.source: @image-url("./img/salameche-right.png");
             circle1.x: 220px;
             circle1.y: 70px;
@@ -66,22 +67,31 @@ export component Recipe inherits Window {
                 circle1 := Circle {
                     y: 0;
                     x: 85px;
+                    width: 57px;
+                    height: 44px;
                 }
 
                 circle2 := Circle {
                     x: 85px;
                     y: 40px;
+                    width: 21px;
+                    height: 18px;
                 }
             }
+
         }
     }
 
     VerticalBox {
         HorizontalBox {
             max-height: self.min-height;
-            b1 := Button {
-                text: "Press and hold to change state";
+            Text {
+                in-out property <string> name;
+                font-family: "Edit Undo BRK";
+                font-size: 80px;
+                text: name;
             }
+            
         }
     }
 }

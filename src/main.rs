@@ -1,6 +1,7 @@
 #![no_std]
 #![no_main]
 
+use log::info;
 use slint::Model;
 
 slint::include_modules!();
@@ -87,6 +88,13 @@ fn panic(_info: &core::panic::PanicInfo) -> ! {
 }
 
 #[embassy_executor::task]
+async fn say_hello() {
+    loop {
+        log::info!("Hello");
+        Timer::after_millis(1000).await;
+    }
+}
+#[embassy_executor::task]
 async fn fade_screen(bl: LedChannel) {
     let mut bl_level = 20;
 
@@ -114,7 +122,9 @@ fn main() -> ! {
     esp_alloc::heap_allocator!(50 * 1024);
     esp_println::logger::init_logger_from_env();
 
-    slint::platform::set_platform(Box::new(EspEmbassyBackend::new()))
+    slint::platform::set_platform(Box::new(EspEmbassyBackend::new(|spawner| {
+        // spawner.spawn(say_hello());
+    })))
         .expect("backend already initialized");
     // spawner.spawn(fade_screen(board.screen_backlight)).ok();
     let main_window = Recipe::new().unwrap();
@@ -133,6 +143,11 @@ fn main() -> ! {
             }
         },
     );
+    // slint::invoke_from_event_loop(func);
+    // https://docs.rs/slint/latest/slint/fn.invoke_from_event_loop.html
+    // let weak_main = main_window.as_weak();
+    // Idea is to create an InterruptExecutor, and get state from outside, then call a weak ref to component to invoke_from_event_loop
+    // https://github.com/slint-ui/slint/discussions/3994 also use waker to sleep correclty in event loop
 
     main_window.run().unwrap();
     // // draw_smiley(&mut display).unwrap();

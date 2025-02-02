@@ -1,6 +1,6 @@
 use core::cell::{Cell, Ref, RefCell, RefMut};
 
-use alloc::rc::Rc;
+use alloc::{boxed::Box, rc::Rc};
 use embassy_executor::Spawner;
 use embassy_time::{Duration, Timer};
 use embedded_graphics::{pixelcolor::raw::RawU16, prelude::Dimensions};
@@ -150,6 +150,7 @@ async fn refresh_screen(
     };
     if let Some(window) = window.borrow().as_ref().clone() {
         loop {
+            let start = time::now();
             slint::platform::update_timers_and_animations();
             // let mut event_count = 0;
             // The hardware keeps a queue of events. We should ideally process all event from the queue before rendering
@@ -196,14 +197,22 @@ async fn refresh_screen(
             //         }
             //     }
             // }
-
+            // window.try_dispatch_event(event)
             window.draw_if_needed(|renderer| {
                 renderer.render_by_line(&mut buffer_provider);
             });
-            if window.has_active_animations() {
-                continue;
+            let total = time::now() - start;
+            log::info!("slint drawing time {}", total);
+            if !window.has_active_animations() {
+                if let Some(duration) = slint::platform::duration_until_next_timer_update() {
+                    let millis = duration.as_millis().try_into().unwrap();
+                    log::info!("will sleep for {}", millis);
+                    Timer::after(Duration::from_millis(millis)).await;
+                } else {
+                    // https://github.com/slint-ui/slint/discussions/3994
+                    // use a stream to await next event, and don't sleep for ever.
+                }
             }
-            Timer::after(Duration::from_millis(1)).await;
         }
     }
 }
@@ -234,11 +243,13 @@ async fn embassy_main(spawner: Spawner, window: RefCell<Option<Rc<MinimalSoftwar
 
 pub struct EspEmbassyBackend {
     window: RefCell<Option<Rc<MinimalSoftwareWindow>>>,
+    post_init: Box<dyn Fn(Spawner) -> ()>,
 }
 impl EspEmbassyBackend {
-    pub fn new() -> EspEmbassyBackend {
-        EspEmbassyBackend {
+    pub fn new(post_init: impl Fn(Spawner) -> () + 'static) -> Self {
+        Self {
             window: RefCell::default(),
+            post_init: Box::new(post_init),
         }
     }
 }
@@ -261,8 +272,10 @@ impl slint::platform::Platform for EspEmbassyBackend {
     fn run_event_loop(&self) -> Result<(), slint::PlatformError> {
         let executor = singleton!(Executor::new(), Executor);
 
-        executor
-            .run(|spawner: Spawner| spawner.must_spawn(embassy_main(spawner, self.window.clone())))
+        executor.run(|spawner: Spawner| {
+            spawner.must_spawn(embassy_main(spawner, self.window.clone()));
+            (self.post_init)(spawner);
+        })
     }
 
     fn debug_log(&self, arguments: core::fmt::Arguments) {
