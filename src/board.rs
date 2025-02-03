@@ -1,6 +1,6 @@
 use core::cell::{Cell, Ref, RefCell, RefMut};
 
-use alloc::{boxed::Box, rc::Rc};
+use alloc::{borrow::ToOwned, boxed::Box, rc::Rc};
 use embassy_executor::Spawner;
 use embassy_time::{Duration, Timer};
 use embedded_graphics::{pixelcolor::raw::RawU16, prelude::Dimensions};
@@ -206,21 +206,29 @@ async fn refresh_screen(
             if !window.has_active_animations() {
                 if let Some(duration) = slint::platform::duration_until_next_timer_update() {
                     let millis = duration.as_millis().try_into().unwrap();
-                    log::info!("will sleep for {}", millis);
+                    log::info!("will sleep for {}ms", millis);
                     Timer::after(Duration::from_millis(millis)).await;
                 } else {
                     // https://github.com/slint-ui/slint/discussions/3994
                     // use a stream to await next event, and don't sleep for ever.
                 }
+            } else {
+                log::info!("will sleep for 20ms to let other task.");
+                Timer::after(Duration::from_millis(2)).await;
             }
         }
     }
 }
 
 #[embassy_executor::task]
-async fn embassy_main(spawner: Spawner, window: RefCell<Option<Rc<MinimalSoftwareWindow>>>) -> ! {
+async fn embassy_main(
+    spawner: Spawner,
+    window: RefCell<Option<Rc<MinimalSoftwareWindow>>>,
+    post_init: Rc<dyn Fn(Spawner, Board<types::LedChannel, (), ()>) -> () + 'static>,
+) -> ! {
+    log::info!("init embassy");
     let board = boards::init();
-
+    log::info!("init embassy done");
     let (display, board) = board.display_peripheral();
 
     // let display = self.display.borrow_mut();
@@ -235,6 +243,7 @@ async fn embassy_main(spawner: Spawner, window: RefCell<Option<Rc<MinimalSoftwar
     // let window = singleton!(x, Option<&Rc<MinimalSoftwareWindow>>);
 
     spawner.spawn(refresh_screen(window, display)).unwrap();
+    (post_init)(spawner, board);
     // spawner.spawn(refresh_screen(self.window));
     loop {
         Timer::after(Duration::from_millis(5_000)).await;
@@ -243,13 +252,15 @@ async fn embassy_main(spawner: Spawner, window: RefCell<Option<Rc<MinimalSoftwar
 
 pub struct EspEmbassyBackend {
     window: RefCell<Option<Rc<MinimalSoftwareWindow>>>,
-    post_init: Box<dyn Fn(Spawner) -> ()>,
+    post_init: Rc<dyn Fn(Spawner, Board<types::LedChannel, (), ()>) -> ()>,
 }
 impl EspEmbassyBackend {
-    pub fn new(post_init: impl Fn(Spawner) -> () + 'static) -> Self {
+    pub fn new(
+        post_init: impl Fn(Spawner, Board<types::LedChannel, (), ()>) -> () + 'static,
+    ) -> Self {
         Self {
             window: RefCell::default(),
-            post_init: Box::new(post_init),
+            post_init: Rc::new(post_init),
         }
     }
 }
@@ -273,8 +284,11 @@ impl slint::platform::Platform for EspEmbassyBackend {
         let executor = singleton!(Executor::new(), Executor);
 
         executor.run(|spawner: Spawner| {
-            spawner.must_spawn(embassy_main(spawner, self.window.clone()));
-            (self.post_init)(spawner);
+            spawner.must_spawn(embassy_main(
+                spawner,
+                self.window.clone(),
+                self.post_init.to_owned(),
+            ));
         })
     }
 

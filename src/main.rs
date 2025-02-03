@@ -107,7 +107,7 @@ async fn fade_screen(bl: LedChannel) {
         }
         esp_println::println!("Setting backlight to {}", bl_level);
 
-        Timer::after_millis(50).await;
+        Timer::after_millis(10).await;
         bl.set_duty(bl_level).unwrap();
         if increase {
             bl_level = bl_level + 1;
@@ -122,10 +122,12 @@ fn main() -> ! {
     esp_alloc::heap_allocator!(50 * 1024);
     esp_println::logger::init_logger_from_env();
 
-    slint::platform::set_platform(Box::new(EspEmbassyBackend::new(|spawner| {
-        // spawner.spawn(say_hello());
+    slint::platform::set_platform(Box::new(EspEmbassyBackend::new(move |spawner, board| {
+        log::info!("spawning post_init");
+        let (led_channel, board) = board.backlight_peripheral();
+        spawner.spawn(fade_screen(led_channel));
     })))
-        .expect("backend already initialized");
+    .expect("backend already initialized");
     // spawner.spawn(fade_screen(board.screen_backlight)).ok();
     let main_window = Recipe::new().unwrap();
 
