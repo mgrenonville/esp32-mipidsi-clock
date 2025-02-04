@@ -1,9 +1,33 @@
 import { HorizontalBox, VerticalBox, Button } from "std-widgets.slint";
 import "assets/editundo.ttf";
 
-component Circle inherits Image {
-    
-    
+component Monster inherits Rectangle {
+    in property <bool> visible_on_screen: true;
+    in property <image> source;
+    clip: true;
+    height: img.height;
+    // border-width: 1px;
+    // border-color: black;
+    states [
+        visible when visible_on_screen: {
+            img.y: 0px;
+        }
+
+        not_visible when !visible_on_screen: {
+            img.y: img.height;
+        }
+
+    ]
+    img := Image {
+        horizontal-tiling: ImageTiling.none;
+        image-rendering: ImageRendering.pixelated;
+        source: source;
+        visible: true;
+        animate y {
+            easing: ease-in-out-circ;
+            duration: 500ms;
+        }
+    }
     // border-radius: root.width / 2;
 }
 
@@ -11,45 +35,48 @@ export component Recipe inherits Window {
     default-font-family: "Edit Undo BRK";
     in-out property <int> counter: 0;
     in-out property <string> name;
+    in property <bool> show_monsters;
 
     height: 240px;
     width: 240px;
     states [
         left-aligned when counter > 0: {
-            circle1.x: 0px;
-            circle1.y: 40px;
-            circle2.x: 0px;
-            circle2.y: 0px;
+            // circle1.x: 0px;
+            // circle1.y: 40px;
+            // circle2.x: 0px;
+            // circle2.y: 0px;
+            circle2.visible_on_screen: false;
             circle1.source: @image-url("./img/test-pyxelate/test-factor-20-palette-16.png");
             circle2.source: @image-url("./img/salameche-left.png");
-            in {
-                animate circle1.x, circle2.x {
-                    duration: 750ms;
-                    easing: ease-in-out-circ;
-                }
-                animate circle1.y, circle2.y {
-                    duration: 250ms;
-                    easing: ease-in-out-circ;
-                }
-            }
-            out {
-                animate circle1.x, circle2.x {
-                    duration: 750ms;
-                    easing: ease-in-out-circ;
-                }
-                animate circle1.y, circle2.y {
-                    duration: 250ms;
-                    easing: ease-in-out-circ;
-                }
-            }
+            // in {
+            //     animate circle1.x, circle2.x {
+            //         duration: 750ms;
+            //         easing: ease-in-out-circ;
+            //     }
+            //     animate circle1.y, circle2.y {
+            //         duration: 250ms;
+            //         easing: ease-in-out-circ;
+            //     }
+            // }
+            // out {
+            //     animate circle1.x, circle2.x {
+            //         duration: 750ms;
+            //         easing: ease-in-out-circ;
+            //     }
+            //     animate circle1.y, circle2.y {
+            //         duration: 250ms;
+            //         easing: ease-in-out-circ;
+            //     }
+            // }
         }
         right-aligned when counter <= 0: {
             circle1.source: @image-url("./img/test-pyxelate/test-factor-20-palette-16.png");
             circle2.source: @image-url("./img/salameche-right.png");
-            circle1.x: 220px;
-            circle1.y: 70px;
-            circle2.x: 220px;
-            circle2.y: 00px;
+            // circle1.x: 220px;
+            // circle1.y: 70px;
+            // circle2.x: 220px;
+            // circle2.y: 00px;
+            circle2.visible_on_screen: true;
         }
     ]
 
@@ -66,18 +93,21 @@ export component Recipe inherits Window {
                 x: 0px;
                 y: 139px;
                 height: 100px;
-                circle1 := Circle {
-                    y: 0;
-                    x: 85px;
+                circle1 := Monster {
+                    y: 35px;
+                    x: 138px;
                     width: 57px;
-                    height: 44px;
+                    clip: true;
+                    visible_on_screen: show_monsters;
+                    // height: 44px;
                 }
 
-                circle2 := Circle {
-                    x: 85px;
-                    y: 40px;
+                circle2 := Monster {
+                    x: 49px;
+                    y: 59px;
                     width: 21px;
-                    height: 18px;
+            
+                    // height: 18px;
                 }
             }
 

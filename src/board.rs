@@ -138,7 +138,7 @@ impl<Backlight, ScreenSpi, Display> Board<Backlight, ScreenSpi, Display> {
     }
 }
 
-const SLINT_TARGET_FPS: u64 = 160;
+const SLINT_TARGET_FPS: u64 = 30;
 const SLINT_FRAME_DURATION_MS: u64 = 1000 / SLINT_TARGET_FPS;
 
 #[embassy_executor::task]
@@ -272,6 +272,7 @@ async fn update_timer(main_window: Rc<Recipe>) {
     let mut x = 0;
     loop {
         main_window.set_name(SharedString::from(format!("11:{}", x)));
+        main_window.set_show_monsters(!main_window.get_show_monsters());
         x = x + 1;
         Timer::after_millis(1000).await;
     }
