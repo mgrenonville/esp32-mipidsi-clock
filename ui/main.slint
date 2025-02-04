@@ -10,6 +10,8 @@ component Circle inherits Image {
 export component Recipe inherits Window {
     default-font-family: "Edit Undo BRK";
     in-out property <int> counter: 0;
+    in-out property <string> name;
+
     height: 240px;
     width: 240px;
     states [
@@ -86,7 +88,6 @@ export component Recipe inherits Window {
         HorizontalBox {
             max-height: self.min-height;
             Text {
-                in-out property <string> name;
                 font-family: "Edit Undo BRK";
                 font-size: 80px;
                 text: name;

@@ -1,20 +1,23 @@
-use core::cell::{Cell, Ref, RefCell, RefMut};
+use core::cell::{Cell, OnceCell, Ref, RefCell, RefMut};
 
-use alloc::{borrow::ToOwned, boxed::Box, rc::Rc};
+use alloc::{borrow::ToOwned, boxed::Box, format, rc::Rc};
 use embassy_executor::Spawner;
+use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, signal::Signal};
 use embassy_time::{Duration, Timer};
 use embedded_graphics::{pixelcolor::raw::RawU16, prelude::Dimensions};
-use esp_hal::{gpio::Output, time, timer::systimer::SystemTimer};
+use esp_hal::{gpio::Output, ledc::channel::ChannelIFace, time, timer::systimer::SystemTimer};
 use esp_hal_embassy::Executor;
 use mipidsi::{
     interface::InterfacePixelFormat,
     models::{Model, ST7789},
 };
-use slint::{platform::software_renderer::MinimalSoftwareWindow, Window};
+use slint::{
+    platform::software_renderer::MinimalSoftwareWindow, ComponentHandle, SharedString, Window,
+};
 use static_cell::StaticCell;
-use types::DisplayImpl;
+use types::{DisplayImpl, LedChannel};
 
-use crate::boards;
+use crate::{boards, Recipe};
 
 pub mod types {
     use embedded_hal_bus::spi::{ExclusiveDevice, NoDelay};
@@ -43,7 +46,7 @@ pub mod types {
         Output<'static>,
     >;
 }
-
+#[macro_export]
 macro_rules! singleton {
     ($val:expr, $T:ty) => {{
         static STATIC_CELL: ::static_cell::StaticCell<$T> = ::static_cell::StaticCell::new();
@@ -135,7 +138,8 @@ impl<Backlight, ScreenSpi, Display> Board<Backlight, ScreenSpi, Display> {
     }
 }
 
-// #[derive(Default)]
+const SLINT_TARGET_FPS: u64 = 160;
+const SLINT_FRAME_DURATION_MS: u64 = 1000 / SLINT_TARGET_FPS;
 
 #[embassy_executor::task]
 async fn refresh_screen(
@@ -213,18 +217,79 @@ async fn refresh_screen(
                     // use a stream to await next event, and don't sleep for ever.
                 }
             } else {
-                log::info!("will sleep for 20ms to let other task.");
-                Timer::after(Duration::from_millis(2)).await;
+                let pause_for_target_fps =
+                    SLINT_FRAME_DURATION_MS as i32 - total.to_millis() as i32;
+
+                if (pause_for_target_fps > 0) {
+                    log::info!(
+                        "will sleep for {}ms to achieve {}fps",
+                        pause_for_target_fps,
+                        SLINT_TARGET_FPS
+                    );
+
+                    Timer::after(Duration::from_millis(pause_for_target_fps as u64)).await;
+                } else {
+                    log::info!("will sleep for 1ms, late on FPS");
+
+                    Timer::after(Duration::from_millis(1)).await;
+                }
             }
         }
     }
 }
 
 #[embassy_executor::task]
+async fn say_hello() {
+    loop {
+        log::info!("Hello");
+        Timer::after_millis(1000).await;
+    }
+}
+#[embassy_executor::task]
+async fn fade_screen(bl: LedChannel) {
+    let mut bl_level = 20;
+
+    let mut increase = true;
+    loop {
+        if bl_level > 99 {
+            increase = false;
+        } else if bl_level < 20 {
+            increase = true;
+        }
+        esp_println::println!("Setting backlight to {}", bl_level);
+
+        Timer::after_millis(10).await;
+        bl.set_duty(bl_level).unwrap();
+        if increase {
+            bl_level = bl_level + 1;
+        } else {
+            bl_level = bl_level - 1;
+        }
+    }
+}
+#[embassy_executor::task]
+async fn update_timer(main_window: Rc<Recipe>) {
+    let mut x = 0;
+    loop {
+        main_window.set_name(SharedString::from(format!("11:{}", x)));
+        x = x + 1;
+        Timer::after_millis(1000).await;
+    }
+}
+
+fn inner_main(spawner: Spawner, board: Board<types::LedChannel, (), ()>, main_window: Rc<Recipe>) {
+    log::info!("spawning post_init");
+    let (led_channel, board) = board.backlight_peripheral();
+    let _ = spawner.spawn(fade_screen(led_channel));
+    let _ = spawner.spawn(update_timer(main_window.clone()));
+}
+
+#[embassy_executor::task]
 async fn embassy_main(
     spawner: Spawner,
     window: RefCell<Option<Rc<MinimalSoftwareWindow>>>,
-    post_init: Rc<dyn Fn(Spawner, Board<types::LedChannel, (), ()>) -> () + 'static>,
+    // post_init: &'static (dyn Fn(Spawner, Board<types::LedChannel, (), ()>, Rc<Recipe>) -> ()),
+    ui_state: &'static Signal<CriticalSectionRawMutex, Rc<Recipe>>,
 ) -> ! {
     log::info!("init embassy");
     let board = boards::init();
@@ -243,8 +308,10 @@ async fn embassy_main(
     // let window = singleton!(x, Option<&Rc<MinimalSoftwareWindow>>);
 
     spawner.spawn(refresh_screen(window, display)).unwrap();
-    (post_init)(spawner, board);
+
     // spawner.spawn(refresh_screen(self.window));
+    let ui = ui_state.wait().await;
+    inner_main(spawner, board, ui);
     loop {
         Timer::after(Duration::from_millis(5_000)).await;
     }
@@ -252,15 +319,21 @@ async fn embassy_main(
 
 pub struct EspEmbassyBackend {
     window: RefCell<Option<Rc<MinimalSoftwareWindow>>>,
-    post_init: Rc<dyn Fn(Spawner, Board<types::LedChannel, (), ()>) -> ()>,
+    // post_init: &'static (dyn Fn(Spawner, Board<types::LedChannel, (), ()>) -> ()),
+    ui_state: &'static Signal<CriticalSectionRawMutex, Rc<Recipe>>, // will be initialized after backend
 }
 impl EspEmbassyBackend {
     pub fn new(
-        post_init: impl Fn(Spawner, Board<types::LedChannel, (), ()>) -> () + 'static,
+        // post_init: &'static (
+        //     impl Fn(Spawner, Board<types::LedChannel, (), ()>) -> (),
+        //     Rc<Recipe>,
+        // ),
+        ui_state: &'static Signal<CriticalSectionRawMutex, Rc<Recipe>>,
     ) -> Self {
         Self {
             window: RefCell::default(),
-            post_init: Rc::new(post_init),
+            // post_init: post_init,
+            ui_state,
         }
     }
 }
@@ -284,11 +357,7 @@ impl slint::platform::Platform for EspEmbassyBackend {
         let executor = singleton!(Executor::new(), Executor);
 
         executor.run(|spawner: Spawner| {
-            spawner.must_spawn(embassy_main(
-                spawner,
-                self.window.clone(),
-                self.post_init.to_owned(),
-            ));
+            spawner.must_spawn(embassy_main(spawner, self.window.clone(), self.ui_state));
         })
     }
 
