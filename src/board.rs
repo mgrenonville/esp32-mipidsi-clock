@@ -1,23 +1,30 @@
-use core::cell::{Cell, OnceCell, Ref, RefCell, RefMut};
+use core::{
+    cell::RefCell,
+    net::{IpAddr, SocketAddr},
+};
 
-use alloc::{borrow::ToOwned, boxed::Box, format, rc::Rc};
+use alloc::{format, rc::Rc};
+use chrono::DateTime;
 use embassy_executor::Spawner;
-use embassy_net::{Runner, Stack};
+use embassy_net::{
+    udp::{PacketMetadata, UdpSocket},
+    Runner, Stack,
+};
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, signal::Signal};
 use embassy_time::{Duration, Timer};
-use embedded_graphics::{pixelcolor::raw::RawU16, prelude::Dimensions};
-use esp_hal::{gpio::Output, ledc::channel::ChannelIFace, time, timer::systimer::SystemTimer};
+use embedded_graphics::pixelcolor::raw::RawU16;
+use esp_hal::{gpio::Output, ledc::channel::ChannelIFace, time};
 use esp_hal_embassy::Executor;
-use esp_wifi::wifi::{ClientConfiguration, Configuration, WifiController, WifiDevice, WifiEvent, WifiStaDevice, WifiState};
-use mipidsi::{
-    interface::InterfacePixelFormat,
-    models::{Model, ST7789},
+use esp_wifi::wifi::{
+    ClientConfiguration, Configuration, WifiController, WifiDevice, WifiEvent, WifiStaDevice,
+    WifiState,
 };
-use slint::{
-    platform::software_renderer::MinimalSoftwareWindow, ComponentHandle, SharedString, Window,
-};
-use static_cell::StaticCell;
-use types::{DisplayImpl, LedChannel};
+use mipidsi::models::ST7789;
+use slint::{platform::software_renderer::MinimalSoftwareWindow, SharedString};
+use smoltcp::wire::DnsQueryType;
+use sntpc::{get_time, NtpContext, NtpTimestampGenerator};
+
+use types::{DisplayImpl, LedChannel, RTC};
 
 use crate::{boards, Recipe};
 
@@ -26,17 +33,18 @@ pub mod types {
     use esp_hal::gpio::Output;
     use esp_hal::ledc::channel::Channel;
     pub use esp_hal::ledc::channel::ChannelIFace;
+    use esp_hal::rtc_cntl::Rtc;
     use esp_hal::spi::master::SpiDmaBus;
     use mipidsi::interface::SpiInterface;
 
     use esp_hal::ledc::LowSpeed;
-    use esp_hal::spi::master::Spi;
-    use esp_hal::{Async, Blocking};
+    use esp_hal::Async;
     use mipidsi::Display;
 
     // pub type SPI =  peripherals.SPI2,
     pub type DisplaySPI = SpiDmaBus<'static, Async>;
 
+    pub type RTC = Rtc<'static>;
     pub type LedChannel = Channel<'static, LowSpeed>;
     pub type DisplayImpl<T> = Display<
         SpiInterface<
@@ -56,11 +64,49 @@ macro_rules! singleton {
     }};
 }
 
-
 const SSID: &str = env!("SSID");
 const PASSWORD: &str = env!("PASSWORD");
+const NTP_SERVER: &str = "pool.ntp.org";
 
+#[derive(Copy, Clone)]
+struct Timestamp<'a> {
+    duration: Duration,
+    rtc: &'a RTC,
+}
+impl<'a> Timestamp<'a> {
+    fn new(rtc: &'a RTC) -> Timestamp<'a> {
+        Timestamp {
+            duration: Duration::default(),
+            rtc,
+        }
+    }
+}
 
+impl<'a> NtpTimestampGenerator for Timestamp<'a> {
+    fn init(&mut self) {
+        self.duration = Duration::from_millis(
+            self.rtc
+                .current_time()
+                .and_utc()
+                .timestamp_millis()
+                .try_into()
+                .unwrap_or(0),
+        );
+        log::info!(
+            "duration: {}ms, time: {}",
+            self.duration.as_millis(),
+            self.rtc.current_time().and_utc()
+        );
+    }
+
+    fn timestamp_sec(&self) -> u64 {
+        self.duration.as_secs()
+    }
+
+    fn timestamp_subsec_micros(&self) -> u32 {
+        0 // don't care about micros.
+    }
+}
 
 // https://github.com/SlimeVR/SlimeVR-Rust/blob/main/firmware/src/peripherals/mod.rs
 pub struct SpiScreen<SPI> {
@@ -79,11 +125,12 @@ pub struct Wifi {
     pub controller: esp_wifi::wifi::WifiController<'static>,
 }
 
-pub struct Board<Backlight = (), ScreenSpi = (), Display = (), Wifi = ()> {
+pub struct Board<Backlight = (), ScreenSpi = (), Display = (), Wifi = (), RTC = ()> {
     pub screen_backlight: Backlight,
     pub screen_spi: ScreenSpi,
     pub display: Display,
     pub wifi: Wifi,
+    pub rtc: RTC,
     // _lifetime: PhantomData<&'d mut Backlight>,
 }
 
@@ -94,13 +141,14 @@ impl Board {
             screen_spi: (),
             display: (),
             wifi: (),
+            rtc: (),
         }
     }
 }
 
 /// Type-level destructors for `Board` which turn peripheral type into () to solve partial move.
-impl<Backlight, ScreenSpi, Display, Wifi> Board<Backlight, ScreenSpi, Display, Wifi> {
-    pub fn backlight_peripheral(self) -> (Backlight, Board<(), ScreenSpi, Display, Wifi>) {
+impl<Backlight, ScreenSpi, Display, Wifi, RTC> Board<Backlight, ScreenSpi, Display, Wifi, RTC> {
+    pub fn backlight_peripheral(self) -> (Backlight, Board<(), ScreenSpi, Display, Wifi, RTC>) {
         (
             self.screen_backlight,
             Board {
@@ -108,10 +156,11 @@ impl<Backlight, ScreenSpi, Display, Wifi> Board<Backlight, ScreenSpi, Display, W
                 screen_spi: self.screen_spi,
                 display: self.display,
                 wifi: self.wifi,
+                rtc: self.rtc,
             },
         )
     }
-    pub fn screen_spi_peripheral(self) -> (ScreenSpi, Board<Backlight, (), Display, Wifi>) {
+    pub fn screen_spi_peripheral(self) -> (ScreenSpi, Board<Backlight, (), Display, Wifi, RTC>) {
         (
             self.screen_spi,
             Board {
@@ -119,10 +168,11 @@ impl<Backlight, ScreenSpi, Display, Wifi> Board<Backlight, ScreenSpi, Display, W
                 screen_spi: (),
                 display: self.display,
                 wifi: self.wifi,
+                rtc: self.rtc,
             },
         )
     }
-    pub fn display_peripheral(self) -> (Display, Board<Backlight, ScreenSpi, (), Wifi>) {
+    pub fn display_peripheral(self) -> (Display, Board<Backlight, ScreenSpi, (), Wifi, RTC>) {
         (
             self.display,
             Board {
@@ -130,10 +180,11 @@ impl<Backlight, ScreenSpi, Display, Wifi> Board<Backlight, ScreenSpi, Display, W
                 screen_spi: self.screen_spi,
                 display: (),
                 wifi: self.wifi,
+                rtc: self.rtc,
             },
         )
     }
-    pub fn wifi_peripheral(self) -> (Wifi, Board<Backlight, ScreenSpi, Display, ()>) {
+    pub fn wifi_peripheral(self) -> (Wifi, Board<Backlight, ScreenSpi, Display, (), RTC>) {
         (
             self.wifi,
             Board {
@@ -141,43 +192,70 @@ impl<Backlight, ScreenSpi, Display, Wifi> Board<Backlight, ScreenSpi, Display, W
                 screen_spi: self.screen_spi,
                 display: self.display,
                 wifi: (),
+                rtc: self.rtc,
+            },
+        )
+    }
+
+    pub fn rtc_peripheral(self) -> (RTC, Board<Backlight, ScreenSpi, Display, Wifi, ()>) {
+        (
+            self.rtc,
+            Board {
+                screen_backlight: self.screen_backlight,
+                screen_spi: self.screen_spi,
+                display: self.display,
+                wifi: self.wifi,
+                rtc: (),
             },
         )
     }
 }
 
-impl<Backlight, ScreenSpi, Display, Wifi> Board<Backlight, ScreenSpi, Display, Wifi> {
-    pub fn backlight<T>(self, p: T) -> Board<T, ScreenSpi, Display, Wifi> {
+impl<Backlight, ScreenSpi, Display, Wifi, RTC> Board<Backlight, ScreenSpi, Display, Wifi, RTC> {
+    pub fn backlight<T>(self, p: T) -> Board<T, ScreenSpi, Display, Wifi, RTC> {
         Board {
             screen_backlight: p,
             screen_spi: self.screen_spi,
             display: self.display,
             wifi: self.wifi,
+            rtc: self.rtc,
         }
     }
 
-    pub fn screen_spi<T>(self, s: T) -> Board<Backlight, T, Display, Wifi> {
+    pub fn screen_spi<T>(self, s: T) -> Board<Backlight, T, Display, Wifi, RTC> {
         Board {
             screen_backlight: self.screen_backlight,
             screen_spi: s,
             display: self.display,
             wifi: self.wifi,
+            rtc: self.rtc,
         }
     }
-    pub fn display<T>(self, d: T) -> Board<Backlight, ScreenSpi, T, Wifi> {
+    pub fn display<T>(self, d: T) -> Board<Backlight, ScreenSpi, T, Wifi, RTC> {
         Board {
             screen_backlight: self.screen_backlight,
             screen_spi: self.screen_spi,
             display: d,
             wifi: self.wifi,
+            rtc: self.rtc,
         }
     }
-    pub fn wifi<T>(self, w: T) -> Board<Backlight, ScreenSpi, Display, T> {
+    pub fn wifi<T>(self, w: T) -> Board<Backlight, ScreenSpi, Display, T, RTC> {
         Board {
             screen_backlight: self.screen_backlight,
             screen_spi: self.screen_spi,
             display: self.display,
             wifi: w,
+            rtc: self.rtc,
+        }
+    }
+    pub fn rtc<T>(self, r: T) -> Board<Backlight, ScreenSpi, Display, Wifi, T> {
+        Board {
+            screen_backlight: self.screen_backlight,
+            screen_spi: self.screen_spi,
+            display: self.display,
+            wifi: self.wifi,
+            rtc: r,
         }
     }
 }
@@ -348,7 +426,7 @@ async fn connection(mut controller: WifiController<'static>) {
             controller.start_async().await.unwrap();
             log::info!("Wifi started!");
         }
-        log::info!("About to connect...");
+        log::info!("About to connect to {} with {}...", SSID, PASSWORD);
 
         match controller.connect_async().await {
             Ok(_) => log::info!("Wifi connected!"),
@@ -361,7 +439,7 @@ async fn connection(mut controller: WifiController<'static>) {
 }
 
 #[embassy_executor::task]
-async fn ntp_task(stack: Stack<'static>) {
+async fn ntp_task(stack: Stack<'static>, rtc: RTC) {
     loop {
         if stack.is_link_up() {
             break;
@@ -370,12 +448,63 @@ async fn ntp_task(stack: Stack<'static>) {
     }
 
     log::info!("Waiting to get IP address...");
+
+    stack.wait_config_up().await;
+
     loop {
         if let Some(config) = stack.config_v4() {
             log::info!("Got IP: {}", config.address);
             break;
         }
+        log::info!(".");
         Timer::after(Duration::from_millis(500)).await;
+    }
+
+    let mut udp_rx_meta = [PacketMetadata::EMPTY; 16];
+    let mut udp_rx_buffer = [0; 1024];
+    let mut udp_tx_meta = [PacketMetadata::EMPTY; 16];
+    let mut udp_tx_buffer = [0; 1024];
+
+    let mut socket = UdpSocket::new(
+        stack,
+        &mut udp_rx_meta,
+        &mut udp_rx_buffer,
+        &mut udp_tx_meta,
+        &mut udp_tx_buffer,
+    );
+
+    // socket.set_timeout(Some(embassy_time::Duration::from_secs(10)));
+
+    socket.bind(123).unwrap();
+
+    let context = NtpContext::new(Timestamp::new(&rtc));
+
+    let ntp_addrs = stack
+        .dns_query(NTP_SERVER, DnsQueryType::A)
+        .await
+        .expect("Failed to resolve DNS");
+    if ntp_addrs.is_empty() {
+        log::error!("Failed to resolve DNS");
+    }
+
+    loop {
+        let addr: IpAddr = ntp_addrs[0].into();
+
+        let result = get_time(SocketAddr::from((addr, 123)), &socket, context).await;
+        // let result = sntp_send_request(SocketAddr::from((addr, 123)), &socket, context).await.ok().unwrap();
+        // let response = sntp_process_response(SocketAddr::from((addr, 123)), &socket, context, result).await;
+        match result {
+            Ok(time) => {
+                let datetime = DateTime::from_timestamp(time.sec().into(), 0).unwrap();
+                log::info!("Time: {:?}", datetime);
+                rtc.set_current_time(datetime.naive_local());
+            }
+            Err(e) => {
+                log::error!("Error getting time: {:?}", e);
+            }
+        }
+
+        Timer::after(Duration::from_secs(15)).await;
     }
 }
 
@@ -384,16 +513,15 @@ async fn net_task(mut runner: Runner<'static, WifiDevice<'static, WifiStaDevice>
     runner.run().await
 }
 
-
-
 fn inner_main(
     spawner: Spawner,
-    board: Board<types::LedChannel, (), (), Wifi>,
+    board: Board<types::LedChannel, (), (), Wifi, RTC>,
     main_window: Rc<Recipe>,
 ) {
     log::info!("spawning post_init");
     let (led_channel, board) = board.backlight_peripheral();
     let (wifi, board) = board.wifi_peripheral();
+    let (rtc, board) = board.rtc_peripheral();
 
     let _ = spawner.spawn(fade_screen(led_channel));
     let _ = spawner.spawn(update_timer(main_window.clone()));
@@ -401,7 +529,7 @@ fn inner_main(
     let _ = spawner.spawn(connection(wifi.controller)).ok();
     let _ = spawner.spawn(net_task(wifi.runner)).ok();
 
-    let _ = spawner.spawn(ntp_task(wifi.stack));
+    let _ = spawner.spawn(ntp_task(wifi.stack, rtc));
 }
 
 #[embassy_executor::task]

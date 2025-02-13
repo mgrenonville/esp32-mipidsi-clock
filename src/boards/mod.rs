@@ -1,7 +1,6 @@
-use alloc::string::ToString;
 use embassy_net::StackResources;
 use embedded_graphics::{pixelcolor::Rgb565, prelude::*};
-use embedded_hal_bus::spi::{ExclusiveDevice, NoDelay};
+use embedded_hal_bus::spi::ExclusiveDevice;
 use esp_hal::clock::CpuClock;
 use esp_hal::delay::Delay;
 use esp_hal::dma::{DmaRxBuf, DmaTxBuf};
@@ -11,6 +10,7 @@ use esp_hal::ledc::timer::Timer;
 use esp_hal::ledc::timer::TimerIFace;
 use esp_hal::ledc::{channel, timer, LSGlobalClkSource, Ledc, LowSpeed};
 use esp_hal::rng::Rng;
+use esp_hal::rtc_cntl::Rtc;
 use esp_hal::time::RateExtU32;
 use esp_hal::timer::timg::TimerGroup;
 use esp_hal::{
@@ -24,11 +24,11 @@ use esp_hal::{
 use esp_wifi::EspWifiController;
 use mipidsi::interface::SpiInterface;
 use mipidsi::models::ST7789;
-use mipidsi::options::{ColorInversion, Orientation, Rotation, TearingEffect};
-use mipidsi::{Builder, Display};
+use mipidsi::options::{ColorInversion, TearingEffect};
+use mipidsi::Builder;
 
-use crate::board::{types, Wifi};
 use crate::board::Board;
+use crate::board::{types, Wifi};
 
 macro_rules! singleton {
     ($val:expr, $T:ty) => {{
@@ -37,8 +37,7 @@ macro_rules! singleton {
     }};
 }
 
-
-pub fn init() -> Board<types::LedChannel, (), types::DisplayImpl<ST7789>, Wifi> {
+pub fn init() -> Board<types::LedChannel, (), types::DisplayImpl<ST7789>, Wifi, types::RTC> {
     let mut config = esp_hal::Config::default();
     config.cpu_clock = CpuClock::_160MHz;
     let peripherals = esp_hal::init(config);
@@ -47,6 +46,8 @@ pub fn init() -> Board<types::LedChannel, (), types::DisplayImpl<ST7789>, Wifi> 
 
     let timg0 = TimerGroup::new(peripherals.TIMG0);
     esp_hal_embassy::init(timg0.timer0);
+
+    let rtc = Rtc::new(peripherals.LPWR);
 
     let mut ledc = Ledc::new(peripherals.LEDC);
     ledc.set_global_slow_clock(LSGlobalClkSource::APBClk);
@@ -137,30 +138,33 @@ pub fn init() -> Board<types::LedChannel, (), types::DisplayImpl<ST7789>, Wifi> 
     );
 
     let wifi = peripherals.WIFI;
-    let (wifi_interface, controller): (esp_wifi::wifi::WifiDevice<'_, esp_wifi::wifi::WifiStaDevice>, esp_wifi::wifi::WifiController<'_>) =
-        esp_wifi::wifi::new_with_mode(&init, wifi, esp_wifi::wifi::WifiStaDevice).unwrap();
-
+    let (wifi_interface, controller): (
+        esp_wifi::wifi::WifiDevice<'_, esp_wifi::wifi::WifiStaDevice>,
+        esp_wifi::wifi::WifiController<'_>,
+    ) = esp_wifi::wifi::new_with_mode(&init, wifi, esp_wifi::wifi::WifiStaDevice).unwrap();
 
     let config = embassy_net::Config::dhcpv4(Default::default());
 
     let seed = (rng.random() as u64) << 32 | rng.random() as u64;
 
     // Init network stack
-    let (stack, runner): (embassy_net::Stack<'_>, embassy_net::Runner<'_, esp_wifi::wifi::WifiDevice<'_, esp_wifi::wifi::WifiStaDevice>>) = embassy_net::new(
+    let (stack, runner): (
+        embassy_net::Stack<'_>,
+        embassy_net::Runner<'_, esp_wifi::wifi::WifiDevice<'_, esp_wifi::wifi::WifiStaDevice>>,
+    ) = embassy_net::new(
         wifi_interface,
         config,
-        singleton!(
-            StackResources::<3>::new(),
-            StackResources<3>
-        ),
+        singleton!(StackResources::<3>::new(), StackResources<3>),
         seed,
     );
 
-    Board::new().backlight(channel0).display(display).wifi(
-        Wifi {
+    Board::new()
+        .backlight(channel0)
+        .display(display)
+        .wifi(Wifi {
             stack,
             runner,
-            controller
-        }
-    )
+            controller,
+        })
+        .rtc(rtc)
 }

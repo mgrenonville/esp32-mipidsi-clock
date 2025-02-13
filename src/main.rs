@@ -5,26 +5,14 @@ slint::include_modules!();
 
 extern crate alloc;
 
-use core::cell::{OnceCell, RefCell};
-
 use alloc::{boxed::Box, rc::Rc};
 
-use board::{
-    types::{self, ChannelIFace},
-    Board, EspEmbassyBackend,
-};
+use board::EspEmbassyBackend;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::signal::Signal;
-use static_cell::StaticCell;
-
-use crate::board::types::LedChannel;
-use embassy_executor::Spawner;
-use embassy_time::Timer;
 
 use esp_hal::{main, reset::software_reset};
 
-use esp_hal::time;
-use esp_hal_embassy::Executor;
 mod board;
 mod boards;
 mod dmaspi;
