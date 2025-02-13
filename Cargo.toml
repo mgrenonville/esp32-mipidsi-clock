@@ -12,11 +12,11 @@ esp-backtrace = { version = "0.14.2", features = [
     "panic-handler",
     "println",
 ] }
-esp-alloc = { version = "0.5.0" }
+esp-alloc = { version = "0.6.0" }
 esp-println = { version = "0.12.0", features = ["esp32c6", "log"] }
 esp-wifi = { version = "0.12.0", features = [
-    "esp32c6",
-
+    "esp32c6", 
+    "wifi"
 ] }
 
 # embassy
@@ -24,6 +24,7 @@ esp-hal-embassy = { version = "0.6.0", features = ["esp32c6"] }
 embassy-time = "0.4.0"
 embassy-executor = "0.7.0"
 embassy-sync = "0.6.2"
+embassy-net = { version = "0.6.0", features = [ "tcp", "udp", "dhcpv4", "medium-ethernet"] }
 
 embedded-hal-bus = { version = "0.2.0" }
 static_cell = "2.1.0"
@@ -54,6 +55,7 @@ mipidsi = "0.9.0"
 
 [build-dependencies]
 slint-build = { git = "https://github.com/slint-ui/slint" }
+dotenvy = "0.15"
 
 [features]
 default = []

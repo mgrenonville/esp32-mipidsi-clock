@@ -48,7 +48,7 @@ fn panic(_info: &core::panic::PanicInfo) -> ! {
 
 #[main]
 fn main() -> ! {
-    esp_alloc::heap_allocator!(50 * 1024);
+    esp_alloc::heap_allocator!(100 * 1024);
     esp_println::logger::init_logger_from_env();
     let MAIN_WINDOW_REF = singleton!( Signal::<CriticalSectionRawMutex, Rc<Recipe>>::new(), Signal<CriticalSectionRawMutex, Rc<Recipe>>);
 

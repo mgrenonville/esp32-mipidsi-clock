@@ -2,11 +2,13 @@ use core::cell::{Cell, OnceCell, Ref, RefCell, RefMut};
 
 use alloc::{borrow::ToOwned, boxed::Box, format, rc::Rc};
 use embassy_executor::Spawner;
+use embassy_net::{Runner, Stack};
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, signal::Signal};
 use embassy_time::{Duration, Timer};
 use embedded_graphics::{pixelcolor::raw::RawU16, prelude::Dimensions};
 use esp_hal::{gpio::Output, ledc::channel::ChannelIFace, time, timer::systimer::SystemTimer};
 use esp_hal_embassy::Executor;
+use esp_wifi::wifi::{ClientConfiguration, Configuration, WifiController, WifiDevice, WifiEvent, WifiStaDevice, WifiState};
 use mipidsi::{
     interface::InterfacePixelFormat,
     models::{Model, ST7789},
@@ -54,6 +56,12 @@ macro_rules! singleton {
     }};
 }
 
+
+const SSID: &str = env!("SSID");
+const PASSWORD: &str = env!("PASSWORD");
+
+
+
 // https://github.com/SlimeVR/SlimeVR-Rust/blob/main/firmware/src/peripherals/mod.rs
 pub struct SpiScreen<SPI> {
     pub dc: Output<'static>,
@@ -62,10 +70,20 @@ pub struct SpiScreen<SPI> {
     pub spi: SPI,
 }
 
-pub struct Board<Backlight = (), ScreenSpi = (), Display = ()> {
+pub struct Wifi {
+    pub stack: embassy_net::Stack<'static>,
+    pub runner: embassy_net::Runner<
+        'static,
+        esp_wifi::wifi::WifiDevice<'static, esp_wifi::wifi::WifiStaDevice>,
+    >,
+    pub controller: esp_wifi::wifi::WifiController<'static>,
+}
+
+pub struct Board<Backlight = (), ScreenSpi = (), Display = (), Wifi = ()> {
     pub screen_backlight: Backlight,
     pub screen_spi: ScreenSpi,
     pub display: Display,
+    pub wifi: Wifi,
     // _lifetime: PhantomData<&'d mut Backlight>,
 }
 
@@ -75,65 +93,91 @@ impl Board {
             screen_backlight: (),
             screen_spi: (),
             display: (),
+            wifi: (),
         }
     }
 }
 
 /// Type-level destructors for `Board` which turn peripheral type into () to solve partial move.
-impl<Backlight, ScreenSpi, Display> Board<Backlight, ScreenSpi, Display> {
-    pub fn backlight_peripheral(self) -> (Backlight, Board<(), ScreenSpi, Display>) {
+impl<Backlight, ScreenSpi, Display, Wifi> Board<Backlight, ScreenSpi, Display, Wifi> {
+    pub fn backlight_peripheral(self) -> (Backlight, Board<(), ScreenSpi, Display, Wifi>) {
         (
             self.screen_backlight,
             Board {
                 screen_backlight: (),
                 screen_spi: self.screen_spi,
                 display: self.display,
+                wifi: self.wifi,
             },
         )
     }
-    pub fn screen_spi_peripheral(self) -> (ScreenSpi, Board<Backlight, (), Display>) {
+    pub fn screen_spi_peripheral(self) -> (ScreenSpi, Board<Backlight, (), Display, Wifi>) {
         (
             self.screen_spi,
             Board {
                 screen_backlight: self.screen_backlight,
                 screen_spi: (),
                 display: self.display,
+                wifi: self.wifi,
             },
         )
     }
-    pub fn display_peripheral(self) -> (Display, Board<Backlight, ScreenSpi, ()>) {
+    pub fn display_peripheral(self) -> (Display, Board<Backlight, ScreenSpi, (), Wifi>) {
         (
             self.display,
             Board {
                 screen_backlight: self.screen_backlight,
                 screen_spi: self.screen_spi,
                 display: (),
+                wifi: self.wifi,
+            },
+        )
+    }
+    pub fn wifi_peripheral(self) -> (Wifi, Board<Backlight, ScreenSpi, Display, ()>) {
+        (
+            self.wifi,
+            Board {
+                screen_backlight: self.screen_backlight,
+                screen_spi: self.screen_spi,
+                display: self.display,
+                wifi: (),
             },
         )
     }
 }
 
-impl<Backlight, ScreenSpi, Display> Board<Backlight, ScreenSpi, Display> {
-    pub fn backlight<T>(self, p: T) -> Board<T, ScreenSpi, Display> {
+impl<Backlight, ScreenSpi, Display, Wifi> Board<Backlight, ScreenSpi, Display, Wifi> {
+    pub fn backlight<T>(self, p: T) -> Board<T, ScreenSpi, Display, Wifi> {
         Board {
             screen_backlight: p,
             screen_spi: self.screen_spi,
             display: self.display,
+            wifi: self.wifi,
         }
     }
 
-    pub fn screen_spi<T>(self, s: T) -> Board<Backlight, T, Display> {
+    pub fn screen_spi<T>(self, s: T) -> Board<Backlight, T, Display, Wifi> {
         Board {
             screen_backlight: self.screen_backlight,
             screen_spi: s,
             display: self.display,
+            wifi: self.wifi,
         }
     }
-    pub fn display<T>(self, d: T) -> Board<Backlight, ScreenSpi, T> {
+    pub fn display<T>(self, d: T) -> Board<Backlight, ScreenSpi, T, Wifi> {
         Board {
             screen_backlight: self.screen_backlight,
             screen_spi: self.screen_spi,
             display: d,
+            wifi: self.wifi,
+        }
+    }
+    pub fn wifi<T>(self, w: T) -> Board<Backlight, ScreenSpi, Display, T> {
+        Board {
+            screen_backlight: self.screen_backlight,
+            screen_spi: self.screen_spi,
+            display: self.display,
+            wifi: w,
         }
     }
 }
@@ -206,11 +250,11 @@ async fn refresh_screen(
                 renderer.render_by_line(&mut buffer_provider);
             });
             let total = time::now() - start;
-            log::info!("slint drawing time {}", total);
+            log::trace!("slint drawing time {}", total);
             if !window.has_active_animations() {
                 if let Some(duration) = slint::platform::duration_until_next_timer_update() {
                     let millis = duration.as_millis().try_into().unwrap();
-                    log::info!("will sleep for {}ms", millis);
+                    log::trace!("will sleep for {}ms", millis);
                     Timer::after(Duration::from_millis(millis)).await;
                 } else {
                     // https://github.com/slint-ui/slint/discussions/3994
@@ -221,7 +265,7 @@ async fn refresh_screen(
                     SLINT_FRAME_DURATION_MS as i32 - total.to_millis() as i32;
 
                 if (pause_for_target_fps > 0) {
-                    log::info!(
+                    log::trace!(
                         "will sleep for {}ms to achieve {}fps",
                         pause_for_target_fps,
                         SLINT_TARGET_FPS
@@ -229,7 +273,7 @@ async fn refresh_screen(
 
                     Timer::after(Duration::from_millis(pause_for_target_fps as u64)).await;
                 } else {
-                    log::info!("will sleep for 1ms, late on FPS");
+                    log::trace!("will sleep for 1ms, late on FPS");
 
                     Timer::after(Duration::from_millis(1)).await;
                 }
@@ -241,7 +285,9 @@ async fn refresh_screen(
 #[embassy_executor::task]
 async fn say_hello() {
     loop {
-        log::info!("Hello");
+        let stats = esp_alloc::HEAP.stats();
+        // HeapStats implements the Display and defmt::Format traits, so you can pretty-print the heap stats.
+        log::info!("{}", stats);
         Timer::after_millis(1000).await;
     }
 }
@@ -253,10 +299,10 @@ async fn fade_screen(bl: LedChannel) {
     loop {
         if bl_level > 99 {
             increase = false;
-        } else if bl_level < 20 {
+        } else if bl_level < 1 {
             increase = true;
         }
-        esp_println::println!("Setting backlight to {}", bl_level);
+        log::trace!("Setting backlight to {}", bl_level);
 
         Timer::after_millis(10).await;
         bl.set_duty(bl_level).unwrap();
@@ -278,11 +324,84 @@ async fn update_timer(main_window: Rc<Recipe>) {
     }
 }
 
-fn inner_main(spawner: Spawner, board: Board<types::LedChannel, (), ()>, main_window: Rc<Recipe>) {
+#[embassy_executor::task]
+async fn connection(mut controller: WifiController<'static>) {
+    log::info!("start connection task");
+    log::info!("Device capabilities: {:?}", controller.capabilities());
+    loop {
+        match esp_wifi::wifi::wifi_state() {
+            WifiState::StaConnected => {
+                // wait until we're no longer connected
+                controller.wait_for_event(WifiEvent::StaDisconnected).await;
+                Timer::after(Duration::from_millis(5000)).await
+            }
+            _ => {}
+        }
+        if !matches!(controller.is_started(), Ok(true)) {
+            let client_config = Configuration::Client(ClientConfiguration {
+                ssid: SSID.try_into().unwrap(),
+                password: PASSWORD.try_into().unwrap(),
+                ..Default::default()
+            });
+            controller.set_configuration(&client_config).unwrap();
+            log::info!("Starting wifi");
+            controller.start_async().await.unwrap();
+            log::info!("Wifi started!");
+        }
+        log::info!("About to connect...");
+
+        match controller.connect_async().await {
+            Ok(_) => log::info!("Wifi connected!"),
+            Err(e) => {
+                log::info!("Failed to connect to wifi: {e:?}");
+                Timer::after(Duration::from_millis(5000)).await
+            }
+        }
+    }
+}
+
+#[embassy_executor::task]
+async fn ntp_task(stack: Stack<'static>) {
+    loop {
+        if stack.is_link_up() {
+            break;
+        }
+        Timer::after(Duration::from_millis(500)).await;
+    }
+
+    log::info!("Waiting to get IP address...");
+    loop {
+        if let Some(config) = stack.config_v4() {
+            log::info!("Got IP: {}", config.address);
+            break;
+        }
+        Timer::after(Duration::from_millis(500)).await;
+    }
+}
+
+#[embassy_executor::task]
+async fn net_task(mut runner: Runner<'static, WifiDevice<'static, WifiStaDevice>>) {
+    runner.run().await
+}
+
+
+
+fn inner_main(
+    spawner: Spawner,
+    board: Board<types::LedChannel, (), (), Wifi>,
+    main_window: Rc<Recipe>,
+) {
     log::info!("spawning post_init");
     let (led_channel, board) = board.backlight_peripheral();
+    let (wifi, board) = board.wifi_peripheral();
+
     let _ = spawner.spawn(fade_screen(led_channel));
     let _ = spawner.spawn(update_timer(main_window.clone()));
+
+    let _ = spawner.spawn(connection(wifi.controller)).ok();
+    let _ = spawner.spawn(net_task(wifi.runner)).ok();
+
+    let _ = spawner.spawn(ntp_task(wifi.stack));
 }
 
 #[embassy_executor::task]

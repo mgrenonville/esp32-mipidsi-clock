@@ -919,6 +919,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "dotenvy"
+version = "0.15.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1aaf95b3e5c8f23aa320147307562d361db0ae0d51242340f558153b4eb2439b"
+
+[[package]]
 name = "dpi"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1015,6 +1021,29 @@ name = "embassy-futures"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1f878075b9794c1e4ac788c95b728f26aa6366d32eeb10c7051389f898f7d067"
+
+[[package]]
+name = "embassy-net"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ed041cc19a603d657124fddefdcbe5ef8bd60e77d972793ebb57de93394f5949"
+dependencies = [
+ "document-features",
+ "embassy-net-driver",
+ "embassy-sync",
+ "embassy-time",
+ "embedded-io-async",
+ "embedded-nal-async",
+ "heapless",
+ "managed",
+ "smoltcp",
+]
+
+[[package]]
+name = "embassy-net-driver"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "524eb3c489760508f71360112bca70f6e53173e6fe48fc5f0efd0f5ab217751d"
 
 [[package]]
 name = "embassy-sync"
@@ -1178,6 +1207,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "embedded-nal"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c56a28be191a992f28f178ec338a0bf02f63d7803244add736d026a471e6ed77"
+dependencies = [
+ "nb 1.1.0",
+]
+
+[[package]]
+name = "embedded-nal-async"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "76959917cd2b86f40a98c28dd5624eddd1fa69d746241c8257eac428d83cb211"
+dependencies = [
+ "embedded-io-async",
+ "embedded-nal",
+]
+
+[[package]]
 name = "embedded-storage"
 version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1266,17 +1314,6 @@ checksum = "33d852cb9b869c2a9b3df2f71a3074817f01e1844f839a144f5fcef059a4eb5d"
 dependencies = [
  "libc",
  "windows-sys 0.59.0",
-]
-
-[[package]]
-name = "esp-alloc"
-version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5162b6e9cd99cc974ec2742da3cf8433e7332853ae10fec922d174ff20fa4c5f"
-dependencies = [
- "critical-section",
- "enumset",
- "linked_list_allocator",
 ]
 
 [[package]]
@@ -1463,9 +1500,12 @@ dependencies = [
  "cfg-if",
  "critical-section",
  "document-features",
+ "embassy-net-driver",
+ "embassy-sync",
  "embedded-io",
  "embedded-io-async",
- "esp-alloc 0.6.0",
+ "enumset",
+ "esp-alloc",
  "esp-build 0.2.0",
  "esp-config",
  "esp-hal",
@@ -1494,14 +1534,16 @@ dependencies = [
 name = "esp32-mipidsi-clock"
 version = "0.1.0"
 dependencies = [
+ "dotenvy",
  "embassy-executor",
+ "embassy-net",
  "embassy-sync",
  "embassy-time",
  "embedded-graphics",
  "embedded-graphics-framebuf",
  "embedded-hal-bus",
  "embedded-io",
- "esp-alloc 0.5.0",
+ "esp-alloc",
  "esp-backtrace",
  "esp-hal",
  "esp-hal-embassy",
@@ -2633,6 +2675,12 @@ checksum = "62bb907fe88d54d8d9ce32a3cceab4218ed2f6b7d35617cafe9adf84e43919cb"
 dependencies = [
  "libc",
 ]
+
+[[package]]
+name = "managed"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0ca88d725a0a943b096803bd34e73a4437208b6077654cc4ecb2947a5f91618d"
 
 [[package]]
 name = "maybe-rayon"
@@ -3989,6 +4037,19 @@ checksum = "9676b89cd56310a87b93dec47b11af744f34d5fc9f367b829474eec0a891350d"
 dependencies = [
  "borsh",
  "serde",
+]
+
+[[package]]
+name = "smoltcp"
+version = "0.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dad095989c1533c1c266d9b1e8d70a1329dd3723c3edac6d03bbd67e7bf6f4bb"
+dependencies = [
+ "bitflags 1.3.2",
+ "byteorder",
+ "cfg-if",
+ "heapless",
+ "managed",
 ]
 
 [[package]]

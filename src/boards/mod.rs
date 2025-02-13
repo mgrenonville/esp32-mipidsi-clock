@@ -1,4 +1,5 @@
 use alloc::string::ToString;
+use embassy_net::StackResources;
 use embedded_graphics::{pixelcolor::Rgb565, prelude::*};
 use embedded_hal_bus::spi::{ExclusiveDevice, NoDelay};
 use esp_hal::clock::CpuClock;
@@ -9,6 +10,7 @@ use esp_hal::ledc::channel::ChannelIFace;
 use esp_hal::ledc::timer::Timer;
 use esp_hal::ledc::timer::TimerIFace;
 use esp_hal::ledc::{channel, timer, LSGlobalClkSource, Ledc, LowSpeed};
+use esp_hal::rng::Rng;
 use esp_hal::time::RateExtU32;
 use esp_hal::timer::timg::TimerGroup;
 use esp_hal::{
@@ -19,12 +21,13 @@ use esp_hal::{
         Mode,
     },
 };
+use esp_wifi::EspWifiController;
 use mipidsi::interface::SpiInterface;
 use mipidsi::models::ST7789;
 use mipidsi::options::{ColorInversion, Orientation, Rotation, TearingEffect};
 use mipidsi::{Builder, Display};
 
-use crate::board::types;
+use crate::board::{types, Wifi};
 use crate::board::Board;
 
 macro_rules! singleton {
@@ -34,10 +37,8 @@ macro_rules! singleton {
     }};
 }
 
-const SSID: &str = "Livebox-3580";
-const PASSWORD: &str = "";
 
-pub fn init() -> Board<types::LedChannel, (), types::DisplayImpl<ST7789>> {
+pub fn init() -> Board<types::LedChannel, (), types::DisplayImpl<ST7789>, Wifi> {
     let mut config = esp_hal::Config::default();
     config.cpu_clock = CpuClock::_160MHz;
     let peripherals = esp_hal::init(config);
@@ -127,77 +128,39 @@ pub fn init() -> Board<types::LedChannel, (), types::DisplayImpl<ST7789>> {
     };
     display.clear(Rgb565::BLACK).unwrap();
 
-    /*
-        // wifi:
-        log::info!("starting wifi");
+    let timg1 = TimerGroup::new(peripherals.TIMG1);
+    let mut rng = Rng::new(peripherals.RNG);
 
-        let timg0 = TimerGroup::new(peripherals.TIMG0);
-        let init = esp_wifi::init(
-            EspWifiInitFor::Wifi,
-            timg0.timer0,
-            Rng::new(peripherals.RNG),
-            peripherals.RADIO_CLK,
-        )
-            .unwrap();
+    let init = &*singleton!(
+        esp_wifi::init(timg1.timer0, rng.clone(), peripherals.RADIO_CLK).unwrap(),
+        EspWifiController<'static>
+    );
 
-        let mut wifi = peripherals.WIFI;
-        log::info!("starting wifi");
+    let wifi = peripherals.WIFI;
+    let (wifi_interface, controller): (esp_wifi::wifi::WifiDevice<'_, esp_wifi::wifi::WifiStaDevice>, esp_wifi::wifi::WifiController<'_>) =
+        esp_wifi::wifi::new_with_mode(&init, wifi, esp_wifi::wifi::WifiStaDevice).unwrap();
 
-        let mut socket_set_entries: [SocketStorage; 3] = Default::default();
 
-        let (iface, device, mut controller, sockets) =
-            create_network_interface(&init, &mut wifi, WifiStaDevice, &mut socket_set_entries).unwrap();
-        log::info!("created network iface");
+    let config = embassy_net::Config::dhcpv4(Default::default());
 
-        let now = || time::now().duration_since_epoch().to_millis();
-        let wifi_stack = WifiStack::new(iface, device, sockets, now);
+    let seed = (rng.random() as u64) << 32 | rng.random() as u64;
 
-        let client_config = Configuration::Client(ClientConfiguration {
-            ssid: SSID.try_into().unwrap(),
-            password: PASSWORD.try_into().unwrap(),
-            ..Default::default()
-        });
-        let res = controller.set_configuration(&client_config);
-        log::info!("wifi_set_configuration returned {:?}", res);
+    // Init network stack
+    let (stack, runner): (embassy_net::Stack<'_>, embassy_net::Runner<'_, esp_wifi::wifi::WifiDevice<'_, esp_wifi::wifi::WifiStaDevice>>) = embassy_net::new(
+        wifi_interface,
+        config,
+        singleton!(
+            StackResources::<3>::new(),
+            StackResources<3>
+        ),
+        seed,
+    );
 
-        controller.start().unwrap();
-        log::info!("is wifi started: {:?}", controller.is_started());
-        log::info!("Start Wifi Scan");
-
-        let res: Result<(heapless::Vec<AccessPointInfo, 10>, usize), WifiError> = controller.scan_n();
-        if let Ok((res, _count)) = res {
-            log::info!("scan successful :{:?}", _count);
-
-            for ap in res {
-                log::info!("{:?}", ap);
-            }
-
-        } else if let Err(res) = res {
-            log::info!("error scanning :{:?}", res);
+    Board::new().backlight(channel0).display(display).wifi(
+        Wifi {
+            stack,
+            runner,
+            controller
         }
-
-        log::info!("{:?}", controller.get_capabilities());
-        log::info!("wifi_connect {:?}", controller.connect());
-
-        // wait to get connected
-        log::info!("Wait to get connected");
-        loop {
-            let res = controller.is_connected();
-            match res {
-                Ok(connected) => {
-                    if connected {
-                        break;
-                    }
-                }
-                Err(err) => {
-                    log::info!("{:?}", err);
-                    loop {}
-                }
-            }
-        }
-        log::info!("{:?}", controller.is_connected());
-
-    */
-
-    Board::new().backlight(channel0).display(display)
+    )
 }
