@@ -4,7 +4,8 @@ use core::{
 };
 
 use alloc::{format, rc::Rc};
-use chrono::DateTime;
+use chrono::{DateTime, Timelike};
+use chrono_tz::Europe::Paris;
 use embassy_executor::Spawner;
 use embassy_net::{
     udp::{PacketMetadata, UdpSocket},
@@ -20,7 +21,7 @@ use esp_wifi::wifi::{
     WifiState,
 };
 use mipidsi::models::ST7789;
-use slint::{platform::software_renderer::MinimalSoftwareWindow, SharedString};
+use slint::{platform::software_renderer::MinimalSoftwareWindow, SharedString, ToSharedString};
 use smoltcp::wire::DnsQueryType;
 use sntpc::{get_time, NtpContext, NtpTimestampGenerator};
 
@@ -260,7 +261,7 @@ impl<Backlight, ScreenSpi, Display, Wifi, RTC> Board<Backlight, ScreenSpi, Displ
     }
 }
 
-const SLINT_TARGET_FPS: u64 = 30;
+const SLINT_TARGET_FPS: u64 = 25;
 const SLINT_FRAME_DURATION_MS: u64 = 1000 / SLINT_TARGET_FPS;
 
 #[embassy_executor::task]
@@ -377,7 +378,7 @@ async fn fade_screen(bl: LedChannel) {
     loop {
         if bl_level > 99 {
             increase = false;
-        } else if bl_level < 1 {
+        } else if bl_level < 50 {
             increase = true;
         }
         log::trace!("Setting backlight to {}", bl_level);
@@ -392,13 +393,20 @@ async fn fade_screen(bl: LedChannel) {
     }
 }
 #[embassy_executor::task]
-async fn update_timer(main_window: Rc<Recipe>) {
-    let mut x = 0;
+async fn update_timer(main_window: Rc<Recipe>, rtc: Rc<RTC>) {
+    let mut visible = true;
+    let mut last_value = 0;
     loop {
-        main_window.set_name(SharedString::from(format!("11:{}", x)));
-        main_window.set_show_monsters(!main_window.get_show_monsters());
-        x = x + 1;
-        Timer::after_millis(1000).await;
+        let current_time = rtc.current_time().and_utc().with_timezone(&Paris);
+        main_window.set_name(current_time.format("%H:%M:%S").to_shared_string());
+        let actual = current_time.second() % 10;
+        if (actual == 0 && actual != last_value) {
+            visible = !visible;
+            last_value = actual;
+        }
+        main_window.set_show_monsters(visible);
+
+        Timer::after_millis(100).await;
     }
 }
 
@@ -439,7 +447,7 @@ async fn connection(mut controller: WifiController<'static>) {
 }
 
 #[embassy_executor::task]
-async fn ntp_task(stack: Stack<'static>, rtc: RTC) {
+async fn ntp_task(stack: Stack<'static>, rtc: Rc<RTC>) {
     loop {
         if stack.is_link_up() {
             break;
@@ -504,7 +512,7 @@ async fn ntp_task(stack: Stack<'static>, rtc: RTC) {
             }
         }
 
-        Timer::after(Duration::from_secs(15)).await;
+        Timer::after(Duration::from_secs(15)).await; // Every 15 minutes
     }
 }
 
@@ -522,14 +530,15 @@ fn inner_main(
     let (led_channel, board) = board.backlight_peripheral();
     let (wifi, board) = board.wifi_peripheral();
     let (rtc, board) = board.rtc_peripheral();
+    let rtc_rc = Rc::new(rtc);
 
     let _ = spawner.spawn(fade_screen(led_channel));
-    let _ = spawner.spawn(update_timer(main_window.clone()));
+    let _ = spawner.spawn(update_timer(main_window.clone(), rtc_rc.clone()));
 
     let _ = spawner.spawn(connection(wifi.controller)).ok();
     let _ = spawner.spawn(net_task(wifi.runner)).ok();
 
-    let _ = spawner.spawn(ntp_task(wifi.stack, rtc));
+    let _ = spawner.spawn(ntp_task(wifi.stack, rtc_rc.clone()));
 }
 
 #[embassy_executor::task]
@@ -544,8 +553,6 @@ async fn embassy_main(
     log::info!("init embassy done");
     let (display, board) = board.display_peripheral();
 
-    // let display = self.display.borrow_mut();
-
     use embedded_graphics::geometry::OriginDimensions;
 
     let size = display.size();
@@ -553,11 +560,8 @@ async fn embassy_main(
 
     window.borrow().as_ref().unwrap().set_size(size);
 
-    // let window = singleton!(x, Option<&Rc<MinimalSoftwareWindow>>);
-
     spawner.spawn(refresh_screen(window, display)).unwrap();
 
-    // spawner.spawn(refresh_screen(self.window));
     let ui = ui_state.wait().await;
     inner_main(spawner, board, ui);
     loop {
