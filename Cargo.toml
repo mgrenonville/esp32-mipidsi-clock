@@ -40,7 +40,7 @@ slint = { git = "https://github.com/slint-ui/slint", default-features = false , 
 # slint-viewer = { git = "https://github.com/slint-ui/slint" }
 
 sntpc = { version = "0.5.2",default-features = false,  features = ["embassy-socket", "log"] }
-
+ds1307 = "0.6.0"
 embedded-graphics = "0.8.0"
 embedded-graphics-framebuf = "0.5.0"
 mipidsi = "0.9.0"

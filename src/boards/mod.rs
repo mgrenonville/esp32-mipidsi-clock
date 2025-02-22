@@ -1,18 +1,22 @@
 use embassy_net::StackResources;
+use embassy_sync::mutex::Mutex;
 use embedded_graphics::{pixelcolor::Rgb565, prelude::*};
+use embedded_hal_bus::i2c;
 use embedded_hal_bus::spi::ExclusiveDevice;
 use esp_hal::clock::CpuClock;
 use esp_hal::delay::Delay;
 use esp_hal::dma::{DmaRxBuf, DmaTxBuf};
+use esp_hal::i2c::master::I2c;
 use esp_hal::ledc::channel::config::PinConfig;
 use esp_hal::ledc::channel::ChannelIFace;
 use esp_hal::ledc::timer::Timer;
 use esp_hal::ledc::timer::TimerIFace;
 use esp_hal::ledc::{channel, timer, LSGlobalClkSource, Ledc, LowSpeed};
 use esp_hal::rng::Rng;
-use esp_hal::rtc_cntl::Rtc;
+use esp_hal::rtc_cntl::{Rtc, RtcClock};
 use esp_hal::time::RateExtU32;
 use esp_hal::timer::timg::TimerGroup;
+use esp_hal::tsens::{Temperature, TemperatureSensor};
 use esp_hal::{
     dma_buffers,
     gpio::{Level, Output},
@@ -21,14 +25,16 @@ use esp_hal::{
         Mode,
     },
 };
+
+use ds1307::{DateTimeAccess, Ds1307, NaiveDate};
 use esp_wifi::EspWifiController;
 use mipidsi::interface::SpiInterface;
 use mipidsi::models::ST7789;
 use mipidsi::options::{ColorInversion, TearingEffect};
 use mipidsi::Builder;
 
-use crate::board::Board;
 use crate::board::{types, Wifi};
+use crate::board::{Board, RtcRelated};
 
 macro_rules! singleton {
     ($val:expr, $T:ty) => {{
@@ -37,7 +43,7 @@ macro_rules! singleton {
     }};
 }
 
-pub fn init() -> Board<types::LedChannel, (), types::DisplayImpl<ST7789>, Wifi, types::RTC> {
+pub fn init() -> Board<types::LedChannel, (), types::DisplayImpl<ST7789>, Wifi, types::RTCUtils> {
     let mut config = esp_hal::Config::default();
     config.cpu_clock = CpuClock::_160MHz;
     let peripherals = esp_hal::init(config);
@@ -48,6 +54,10 @@ pub fn init() -> Board<types::LedChannel, (), types::DisplayImpl<ST7789>, Wifi, 
     esp_hal_embassy::init(timg0.timer0);
 
     let rtc = Rtc::new(peripherals.LPWR);
+
+    let tsen =
+        TemperatureSensor::new(peripherals.TSENS, esp_hal::tsens::Config::default()).unwrap();
+    tsen.power_up();
 
     let mut ledc = Ledc::new(peripherals.LEDC);
     ledc.set_global_slow_clock(LSGlobalClkSource::APBClk);
@@ -81,7 +91,7 @@ pub fn init() -> Board<types::LedChannel, (), types::DisplayImpl<ST7789>, Wifi, 
     let cs = peripherals.GPIO4;
 
     // Define the reset pin as digital outputs and make it high
-    let mut rst = Output::new(peripherals.GPIO6, Level::Low);
+    let mut rst = Output::new(peripherals.GPIO2, Level::Low);
     rst.set_high();
 
     let (rx_buffer, rx_descriptors, tx_buffer, tx_descriptors) = dma_buffers!(2400, 2400);
@@ -158,6 +168,17 @@ pub fn init() -> Board<types::LedChannel, (), types::DisplayImpl<ST7789>, Wifi, 
         seed,
     );
 
+    let i2c = I2c::new(peripherals.I2C0, esp_hal::i2c::master::Config::default())
+        .ok()
+        .unwrap()
+        .with_scl(peripherals.GPIO6)
+        .with_sda(peripherals.GPIO7);
+
+    let mut ds1307 =  Ds1307::new(i2c);
+    ds1307.set_running().ok();
+
+    // let datetime = ds1307.datetime().unwrap();
+    log::info!("DS1307: {}", ds1307.running().ok().unwrap());
     Board::new()
         .backlight(channel0)
         .display(display)
@@ -166,5 +187,9 @@ pub fn init() -> Board<types::LedChannel, (), types::DisplayImpl<ST7789>, Wifi, 
             runner,
             controller,
         })
-        .rtc(rtc)
+        .rtc(RtcRelated {
+            ds1307: Mutex::new(ds1307),
+            rtc,
+            temperature_sensor: tsen,
+        })
 }
