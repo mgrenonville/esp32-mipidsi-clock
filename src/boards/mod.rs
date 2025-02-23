@@ -1,22 +1,23 @@
 use embassy_net::StackResources;
 use embassy_sync::mutex::Mutex;
-use embedded_graphics::{pixelcolor::Rgb565, prelude::*};
-use embedded_hal_bus::i2c;
+use embedded_graphics::{draw_target::DrawTarget, pixelcolor::Rgb565, prelude::RgbColor};
 use embedded_hal_bus::spi::ExclusiveDevice;
-use esp_hal::clock::CpuClock;
-use esp_hal::delay::Delay;
-use esp_hal::dma::{DmaRxBuf, DmaTxBuf};
-use esp_hal::i2c::master::I2c;
-use esp_hal::ledc::channel::config::PinConfig;
-use esp_hal::ledc::channel::ChannelIFace;
-use esp_hal::ledc::timer::Timer;
-use esp_hal::ledc::timer::TimerIFace;
-use esp_hal::ledc::{channel, timer, LSGlobalClkSource, Ledc, LowSpeed};
-use esp_hal::rng::Rng;
-use esp_hal::rtc_cntl::{Rtc, RtcClock};
-use esp_hal::time::RateExtU32;
-use esp_hal::timer::timg::TimerGroup;
-use esp_hal::tsens::{Temperature, TemperatureSensor};
+use esp_hal::{
+    clock::CpuClock,
+    delay::Delay,
+    dma::{DmaRxBuf, DmaTxBuf},
+    i2c::master::I2c,
+    ledc::{
+        channel::{self, config::PinConfig, ChannelIFace},
+        timer::{self, Timer, TimerIFace},
+        LSGlobalClkSource, Ledc, LowSpeed,
+    },
+    rng::Rng,
+    rtc_cntl::Rtc,
+    time::RateExtU32,
+    timer::timg::TimerGroup,
+    tsens::TemperatureSensor,
+};
 use esp_hal::{
     dma_buffers,
     gpio::{Level, Output},
@@ -26,15 +27,16 @@ use esp_hal::{
     },
 };
 
-use ds1307::{DateTimeAccess, Ds1307, NaiveDate};
+use ds1307::Ds1307;
 use esp_wifi::EspWifiController;
-use mipidsi::interface::SpiInterface;
-use mipidsi::models::ST7789;
-use mipidsi::options::{ColorInversion, TearingEffect};
-use mipidsi::Builder;
+use mipidsi::{
+    interface::SpiInterface,
+    models::ST7789,
+    options::{ColorInversion, TearingEffect},
+    Builder,
+};
 
-use crate::board::{types, Wifi};
-use crate::board::{Board, RtcRelated};
+use crate::board::{types, Board, RtcRelated, Wifi};
 
 pub(crate) mod slintdraw;
 

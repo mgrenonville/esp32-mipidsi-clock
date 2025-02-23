@@ -7,15 +7,16 @@ extern crate alloc;
 
 use alloc::{boxed::Box, rc::Rc};
 
-use board::EspEmbassyBackend;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::signal::Signal;
 
 use esp_hal::{main, reset::software_reset};
+use slintplatform::EspEmbassyBackend;
 
 mod board;
 mod boards;
 mod dmaspi;
+mod slintplatform;
 
 #[panic_handler]
 fn panic(_info: &core::panic::PanicInfo) -> ! {
