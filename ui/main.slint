@@ -1,6 +1,7 @@
 import { HorizontalBox, VerticalBox, Button } from "std-widgets.slint";
 import "assets/editundo.ttf";
 
+export enum WifiState {STARTING, LINK_UP, OK}
 component Monster inherits Rectangle {
     in property <bool> visible_on_screen: true;
     in property <image> source;
@@ -33,7 +34,10 @@ component Monster inherits Rectangle {
 
 export component Recipe inherits Window {
     default-font-family: "Edit Undo BRK";
+    always-on-top: false;
     in-out property <int> counter: 0;
+    in property <WifiState> wifi_state;
+
     in-out property <string> name;
     in property <bool> show_monsters;
 
@@ -81,6 +85,7 @@ export component Recipe inherits Window {
     ]
 
     VerticalLayout {
+
         Image {
             horizontal-tiling: ImageTiling.round;
             image-fit: ImageFit.fill;
@@ -112,11 +117,13 @@ export component Recipe inherits Window {
             }
 
         }
+       
     }
 
     VerticalBox {
         HorizontalBox {
             max-height: self.min-height;
+
             Text {
                 font-family: "Edit Undo BRK";
                 font-size: 72px;
@@ -124,5 +131,28 @@ export component Recipe inherits Window {
             }
             
         }
+    }
+
+    Image {
+        source: @image-url("img/wifi.png");
+        x:parent.height - self.height - 2px;
+        y:parent.width - self.width - 2px;
+        states [
+            not_running when wifi_state == WifiState.STARTING: {
+                colorize: red;
+            }
+    
+            link_up when wifi_state == WifiState.LINK-UP: {
+                colorize: darkorange;
+            }
+
+            ok when wifi_state == WifiState.OK: {
+                colorize: darkblue;
+
+
+            }
+    
+        ]
+        
     }
 }

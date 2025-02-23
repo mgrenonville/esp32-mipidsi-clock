@@ -24,6 +24,7 @@ esp-hal-embassy = { version = "0.6.0", features = ["esp32c6"] }
 embassy-time = "0.4.0"
 embassy-executor = {version = "0.7.0" ,features = ["task-arena-size-8192"]}
 embassy-sync = "0.6.2"
+embassy-futures = "0.1.1"
 embassy-net = { version = "0.6.0", features = [ "tcp", "udp", "dhcpv4", "dns", "medium-ethernet", "packet-trace"] }
 
 embedded-hal-bus = { version = "0.2.0" }

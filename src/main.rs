@@ -56,7 +56,7 @@ fn main() -> ! {
     let timer = slint::Timer::default();
     timer.start(
         slint::TimerMode::Repeated,
-        core::time::Duration::from_millis(1000),
+        core::time::Duration::from_millis(10000),
         move || {
             if state.get_counter() <= 0 {
                 state.set_counter(25);

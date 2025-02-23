@@ -9,13 +9,21 @@ use chrono_tz::Europe::Paris;
 use ds1307::DateTimeAccess;
 use ds1307::Ds1307;
 use embassy_executor::Spawner;
+use embassy_futures::select::select;
 use embassy_net::{
     udp::{PacketMetadata, UdpSocket},
     Runner, Stack,
 };
-use embassy_sync::{blocking_mutex::raw::{CriticalSectionRawMutex, NoopRawMutex}, mutex::Mutex, signal::Signal};
+use embassy_sync::{
+    blocking_mutex::{
+        raw::{CriticalSectionRawMutex, NoopRawMutex},
+        CriticalSectionMutex,
+    },
+    mutex::Mutex,
+    signal::Signal,
+};
 use embassy_time::{Duration, Instant, Timer};
-use embedded_graphics::pixelcolor::raw::RawU16;
+use embedded_graphics::{pixelcolor::raw::RawU16, prelude::RgbColor};
 use esp_hal::{
     gpio::Output, i2c::master::I2c, ledc::channel::ChannelIFace, rtc_cntl::Rtc, time,
     tsens::TemperatureSensor,
@@ -25,14 +33,21 @@ use esp_wifi::wifi::{
     ClientConfiguration, Configuration, WifiController, WifiDevice, WifiEvent, WifiStaDevice,
     WifiState,
 };
-use mipidsi::models::ST7789;
+use mipidsi::{
+    interface::InterfacePixelFormat,
+    models::{Model, ST7789},
+};
 use slint::{platform::software_renderer::MinimalSoftwareWindow, SharedString, ToSharedString};
 use smoltcp::wire::DnsQueryType;
 use sntpc::{get_time, NtpContext, NtpTimestampGenerator};
 
 use types::{DisplayImpl, LedChannel, RTCUtils};
 
-use crate::{boards, Recipe};
+use crate::boards::slintdraw;
+use crate::{
+    boards::{self, slintdraw::DrawBuffer},
+    Recipe,
+};
 
 pub mod types {
     use embedded_hal_bus::spi::{ExclusiveDevice, NoDelay};
@@ -54,13 +69,13 @@ pub mod types {
 
     pub type RTCUtils = RtcRelated;
     pub type LedChannel = Channel<'static, LowSpeed>;
-    pub type DisplayImpl<T> = Display<
+    pub type DisplayImpl<M> = Display<
         SpiInterface<
             'static,
             ExclusiveDevice<DisplaySPI, Output<'static>, NoDelay>,
             Output<'static>,
         >,
-        T,
+        M,
         Output<'static>,
     >;
 }
@@ -292,6 +307,7 @@ const SLINT_FRAME_DURATION_MS: u64 = 1000 / SLINT_TARGET_FPS;
 async fn refresh_screen(
     window: RefCell<Option<Rc<MinimalSoftwareWindow>>>,
     display: DisplayImpl<ST7789>,
+    refresh_signal: Rc<Signal<CriticalSectionRawMutex, ()>>,
 ) {
     // let display = displayRef;
 
@@ -358,10 +374,14 @@ async fn refresh_screen(
                 if let Some(duration) = slint::platform::duration_until_next_timer_update() {
                     let millis = duration.as_millis().try_into().unwrap();
                     log::trace!("will sleep for {}ms", millis);
-                    Timer::after(Duration::from_millis(millis)).await;
+                    select(
+                        refresh_signal.wait(),
+                        Timer::after(Duration::from_millis(millis)),
+                    )
+                    .await;
                 } else {
                     // https://github.com/slint-ui/slint/discussions/3994
-                    // use a stream to await next event, and don't sleep for ever.
+                    refresh_signal.wait().await;
                 }
             } else {
                 let pause_for_target_fps =
@@ -417,7 +437,11 @@ async fn fade_screen(bl: LedChannel) {
     }
 }
 #[embassy_executor::task]
-async fn update_timer(main_window: Rc<Recipe>, rtc: Rc<RTCUtils>) {
+async fn update_timer(
+    main_window: Rc<Recipe>,
+    rtc: Rc<RTCUtils>,
+    refresh_signal: Rc<Signal<CriticalSectionRawMutex, ()>>,
+) {
     let mut visible = true;
     let mut last_value = 0;
     loop {
@@ -431,12 +455,20 @@ async fn update_timer(main_window: Rc<Recipe>, rtc: Rc<RTCUtils>) {
             .with_timezone(&Paris);
         main_window.set_name(current_time.format("%H:%M:%S").to_shared_string());
         let actual = current_time.second() % 10;
-        if (actual == 0 && actual != last_value) {
+        if (actual != last_value) {
             visible = !visible;
-            last_value = actual;
         }
+        last_value = actual;
         main_window.set_show_monsters(visible);
-
+        log::debug!(
+            "Setting visible monster: {} (actual: {}, last_value{}, current_time: {})",
+            visible,
+            actual,
+            last_value,
+            current_time
+        );
+        // trigger refresh
+        refresh_signal.signal(());
         Timer::after_millis(100).await;
     }
 }
@@ -582,7 +614,7 @@ async fn ntp_task(stack: Stack<'static>, rtc: Rc<RTCUtils>) {
             }
         }
 
-        Timer::after(Duration::from_secs(15)).await; // Every 15 minutes
+        Timer::after(Duration::from_secs(15 * 60)).await; // Every 15 minutes
     }
 }
 
@@ -595,6 +627,7 @@ fn inner_main(
     spawner: Spawner,
     board: Board<types::LedChannel, (), (), Wifi, RTCUtils>,
     main_window: Rc<Recipe>,
+    refresh_signal: Rc<Signal<CriticalSectionRawMutex, ()>>,
 ) {
     log::info!("spawning post_init");
     let (led_channel, board) = board.backlight_peripheral();
@@ -603,14 +636,48 @@ fn inner_main(
     let rtc_rc = Rc::new(rtc);
 
     let _ = spawner.spawn(fade_screen(led_channel));
-    let _ = spawner.spawn(update_timer(main_window.clone(), rtc_rc.clone()));
+    let _ = spawner.spawn(update_timer(
+        main_window.clone(),
+        rtc_rc.clone(),
+        refresh_signal.clone(),
+    ));
 
     let _ = spawner.spawn(connection(wifi.controller)).ok();
     let _ = spawner.spawn(net_task(wifi.runner)).ok();
 
     let _ = spawner.spawn(ntp_task(wifi.stack, rtc_rc.clone()));
+    let _ = spawner.spawn(wifi_status_task(
+        wifi.stack,
+        main_window.clone(),
+        refresh_signal,
+    ));
 }
 
+#[embassy_executor::task]
+async fn wifi_status_task(
+    stack: Stack<'static>,
+    main_window: Rc<Recipe>,
+    refresh_signal: Rc<Signal<CriticalSectionRawMutex, ()>>,
+) {
+    loop {
+        if (stack.is_link_up()) {
+            if (stack.is_config_up()) {
+                main_window.set_wifi_state(crate::WifiState::OK);
+            } else {
+                main_window.set_wifi_state(crate::WifiState::LINKUP);
+            }
+        } else {
+            main_window.set_wifi_state(crate::WifiState::STARTING);
+        }
+
+        refresh_signal.signal(());
+        if (stack.is_config_up()) {
+            Timer::after(Duration::from_millis(50)).await;
+        } else {
+            Timer::after(Duration::from_secs(10)).await;
+        }
+    }
+}
 #[embassy_executor::task]
 async fn embassy_main(
     spawner: Spawner,
@@ -625,15 +692,19 @@ async fn embassy_main(
 
     use embedded_graphics::geometry::OriginDimensions;
 
+    let refresh_signal = Rc::new(Signal::<CriticalSectionRawMutex, ()>::new());
+
     let size = display.size();
     let size = slint::PhysicalSize::new(size.width, size.height);
 
     window.borrow().as_ref().unwrap().set_size(size);
 
-    spawner.spawn(refresh_screen(window, display)).unwrap();
+    spawner
+        .spawn(refresh_screen(window, display, refresh_signal.clone()))
+        .unwrap();
 
     let ui = ui_state.wait().await;
-    inner_main(spawner, board, ui);
+    inner_main(spawner, board, ui, refresh_signal);
     loop {
         Timer::after(Duration::from_millis(5_000)).await;
     }
@@ -685,38 +756,5 @@ impl slint::platform::Platform for EspEmbassyBackend {
 
     fn debug_log(&self, arguments: core::fmt::Arguments) {
         esp_println::println!("{}", arguments);
-    }
-}
-
-struct DrawBuffer<'a, Display> {
-    display: Display,
-    buffer: &'a mut [slint::platform::software_renderer::Rgb565Pixel],
-}
-
-impl slint::platform::software_renderer::LineBufferProvider
-    for &mut DrawBuffer<'_, DisplayImpl<ST7789>>
-{
-    type TargetPixel = slint::platform::software_renderer::Rgb565Pixel;
-
-    fn process_line(
-        &mut self,
-        line: usize,
-        range: core::ops::Range<usize>,
-        render_fn: impl FnOnce(&mut [slint::platform::software_renderer::Rgb565Pixel]),
-    ) {
-        let buffer = &mut self.buffer[range.clone()];
-
-        render_fn(buffer);
-
-        // We send empty data just to get the device in the right window
-        self.display
-            .set_pixels(
-                range.start as u16,
-                line as _,
-                range.end as u16,
-                line as u16,
-                buffer.iter().map(|x| RawU16::new(x.0).into()),
-            )
-            .unwrap();
     }
 }

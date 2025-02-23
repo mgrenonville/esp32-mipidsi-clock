@@ -36,6 +36,8 @@ use mipidsi::Builder;
 use crate::board::{types, Wifi};
 use crate::board::{Board, RtcRelated};
 
+pub(crate) mod slintdraw;
+
 macro_rules! singleton {
     ($val:expr, $T:ty) => {{
         static STATIC_CELL: ::static_cell::StaticCell<$T> = ::static_cell::StaticCell::new();
@@ -174,7 +176,7 @@ pub fn init() -> Board<types::LedChannel, (), types::DisplayImpl<ST7789>, Wifi, 
         .with_scl(peripherals.GPIO6)
         .with_sda(peripherals.GPIO7);
 
-    let mut ds1307 =  Ds1307::new(i2c);
+    let mut ds1307 = Ds1307::new(i2c);
     ds1307.set_running().ok();
 
     // let datetime = ds1307.datetime().unwrap();
