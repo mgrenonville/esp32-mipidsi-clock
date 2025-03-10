@@ -1586,7 +1586,7 @@ dependencies = [
  "log",
  "mipidsi",
  "slint",
- "slint-build",
+ "slint-generated",
  "smoltcp",
  "sntpc",
  "static_cell",
@@ -4074,6 +4074,15 @@ dependencies = [
  "i-slint-compiler",
  "spin_on",
  "toml_edit",
+]
+
+[[package]]
+name = "slint-generated"
+version = "0.1.0"
+dependencies = [
+ "i-slint-core-macros",
+ "slint",
+ "slint-build",
 ]
 
 [[package]]

@@ -2,6 +2,8 @@ use ds1307::Ds1307;
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex};
 use esp_hal::{gpio::Output, i2c::master::I2c, rtc_cntl::Rtc, tsens::TemperatureSensor};
 
+use crate::controller::Hardware;
+
 pub mod types {
     use embedded_hal_bus::spi::{ExclusiveDevice, NoDelay};
     use esp_hal::gpio::Output;
@@ -60,6 +62,7 @@ pub struct Wifi {
     >,
     pub controller: esp_wifi::wifi::WifiController<'static>,
 }
+
 
 pub struct Board<Backlight = (), ScreenSpi = (), Display = (), Wifi = (), RTCUtils = ()> {
     pub screen_backlight: Backlight,
@@ -202,4 +205,8 @@ impl<Backlight, ScreenSpi, Display, Wifi, RTCUtils>
             rtc: r,
         }
     }
+}
+
+impl<Backlight, ScreenSpi, Display, Wifi, RTCUtils> Hardware for Board<Backlight, ScreenSpi, Display, Wifi, RTCUtils> {
+    
 }

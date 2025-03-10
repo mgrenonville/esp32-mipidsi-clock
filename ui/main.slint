@@ -1,7 +1,10 @@
 import { HorizontalBox, VerticalBox, Button } from "std-widgets.slint";
 import "assets/editundo.ttf";
 
-export enum WifiState {STARTING, LINK_UP, OK}
+import { Globals, WifiState } from "common.slint";
+export { Globals }
+
+
 component Monster inherits Rectangle {
     in property <bool> visible_on_screen: true;
     in property <image> source;
@@ -13,11 +16,9 @@ component Monster inherits Rectangle {
         visible when visible_on_screen: {
             img.y: 0px;
         }
-
         not_visible when !visible_on_screen: {
             img.y: img.height;
         }
-
     ]
     img := Image {
         horizontal-tiling: ImageTiling.none;
@@ -35,16 +36,12 @@ component Monster inherits Rectangle {
 export component Recipe inherits Window {
     default-font-family: "Edit Undo BRK";
     always-on-top: false;
-    in-out property <int> counter: 0;
-    in property <WifiState> wifi_state;
-
-    in-out property <string> name;
-    in property <bool> show_monsters;
+  
 
     height: 240px;
     width: 240px;
     states [
-        left-aligned when counter > 0: {
+        left-aligned when Globals.counter > 0: {
             // circle1.x: 0px;
             // circle1.y: 40px;
             // circle2.x: 0px;
@@ -73,7 +70,7 @@ export component Recipe inherits Window {
             //     }
             // }
         }
-        right-aligned when counter <= 0: {
+        right-aligned when Globals.counter <= 0: {
             circle1.source: @image-url("./img/test-pyxelate/test-factor-20-palette-16.png");
             circle2.source: @image-url("./img/salameche-right.png");
             // circle1.x: 220px;
@@ -103,7 +100,7 @@ export component Recipe inherits Window {
                     x: 138px;
                     width: 57px;
                     clip: true;
-                    visible_on_screen: show_monsters;
+                    visible_on_screen: Globals.show_monsters;
                     // height: 44px;
                 }
 
@@ -115,9 +112,7 @@ export component Recipe inherits Window {
                     // height: 18px;
                 }
             }
-
         }
-       
     }
 
     VerticalBox {
@@ -127,32 +122,25 @@ export component Recipe inherits Window {
             Text {
                 font-family: "Edit Undo BRK";
                 font-size: 72px;
-                text: name;
+                text: Globals.name;
             }
-            
         }
     }
 
     Image {
         source: @image-url("img/wifi.png");
-        x:parent.height - self.height - 2px;
-        y:parent.width - self.width - 2px;
+        x: parent.height - self.height - 2px;
+        y: parent.width - self.width - 2px;
         states [
-            not_running when wifi_state == WifiState.STARTING: {
+            not_running when Globals.wifi_state == WifiState.STARTING: {
                 colorize: red;
             }
-    
-            link_up when wifi_state == WifiState.LINK-UP: {
+            link_up when Globals.wifi_state == WifiState.LINK-UP: {
                 colorize: darkorange;
             }
-
-            ok when wifi_state == WifiState.OK: {
+            ok when Globals.wifi_state == WifiState.OK: {
                 colorize: darkblue;
-
-
             }
-    
         ]
-        
     }
 }

@@ -1,0 +1,11 @@
+export enum WifiState {STARTING, LINK_UP, OK}
+
+export global Globals {
+    in-out property <int> counter: 0;
+    in property <WifiState> wifi_state;
+
+    in-out property <string> name;
+    in property <bool> show_monsters;
+}
+
+
