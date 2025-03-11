@@ -9,6 +9,4 @@ fn main() {
     dotenv.for_each(|kv| {
         println!("cargo:rustc-env={}={}", kv.0, kv.1);
     });
-
-   
 }

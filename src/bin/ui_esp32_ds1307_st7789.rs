@@ -4,23 +4,20 @@
 
 extern crate alloc;
 
-use core::net::{IpAddr, SocketAddr};
-
-use chrono::{DateTime, Timelike};
-use chrono_tz::Europe::Paris;
-use embassy_futures::select::select;
-use embassy_net::{
-    udp::{PacketMetadata, UdpSocket},
-    Runner, Stack,
-};
-use ds1307::DateTimeAccess;
+use alloc::vec;
 use alloc::{boxed::Box, rc::Rc};
+use chrono::Timelike;
 use embassy_executor::Spawner;
+use embassy_futures::select::select;
 use embassy_net::StackResources;
-use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, mutex::Mutex, signal::Signal};
-use embassy_time::{Duration, Instant, Timer};
+use embassy_net::{Runner, Stack};
+use embassy_sync::mutex::Mutex;
+use embassy_time::{Duration, Instant, Ticker, Timer};
 use embedded_graphics::{draw_target::DrawTarget, pixelcolor::Rgb565, prelude::RgbColor};
 use embedded_hal_bus::spi::ExclusiveDevice;
+use esp32_mipidsi_clock::controller::WallClock;
+use esp32_mipidsi_clock::ntp::NtpClient;
+use esp32_mipidsi_clock::wifi::EspEmbassyWifiController;
 use esp_hal::{
     clock::CpuClock,
     delay::Delay,
@@ -50,16 +47,21 @@ use esp_hal::{
 use esp_backtrace as _;
 
 use ds1307::Ds1307;
-use esp32_mipidsi_clock::{board::{types::LedChannel, Board}, boards::DrawBuffer, controller::Controller, slintplatform::EspEmbassyBackend};
+use esp32_mipidsi_clock::{
+    board::{types::LedChannel, Board},
+    boards::DrawBuffer,
+    controller::Controller,
+    slintplatform::EspEmbassyBackend,
+};
 use esp32_mipidsi_clock::{
     board::{
         types::{DisplayImpl, RTCUtils},
-        RtcRelated, Wifi,
+        RtcRelated,
     },
     controller::{self, Action},
 };
 use esp_wifi::{
-    wifi::{ClientConfiguration, Configuration, WifiController, WifiDevice, WifiEvent, WifiStaDevice, WifiState},
+    wifi::{WifiDevice, WifiStaDevice},
     EspWifiController,
 };
 use mipidsi::{
@@ -73,9 +75,7 @@ use slint::{
     ComponentHandle,
 };
 
-use slint_generated::Recipe;
-use smoltcp::wire::DnsQueryType;
-use sntpc::{get_time, NtpContext, NtpTimestampGenerator};
+use slint_generated::{Globals, Recipe};
 
 macro_rules! singleton {
     ($val:expr, $T:ty) => {{
@@ -86,10 +86,6 @@ macro_rules! singleton {
 
 pub const DISPLAY_WIDTH: usize = 240;
 pub const DISPLAY_HEIGHT: usize = 240;
-
-const SSID: &str = env!("SSID");
-const PASSWORD: &str = env!("PASSWORD");
-const NTP_SERVER: &str = "pool.ntp.org";
 
 const SLINT_TARGET_FPS: u64 = 25;
 const SLINT_FRAME_DURATION_MS: u64 = 1000 / SLINT_TARGET_FPS;
@@ -234,18 +230,11 @@ async fn main(spawner: Spawner) {
 
     // let datetime = ds1307.datetime().unwrap();
     log::info!("DS1307: {}", ds1307.running().ok().unwrap());
-    let board = Board::new()
-        .backlight(channel0)
-        .wifi(Wifi {
-            stack,
-            runner,
-            controller,
-        })
-        .rtc(RtcRelated {
-            ds1307: Mutex::new(ds1307),
-            rtc,
-            temperature_sensor: tsen,
-        });
+    let board = Board::new().backlight(channel0).rtc(RtcRelated {
+        ds1307: Mutex::new(ds1307),
+        rtc,
+        temperature_sensor: tsen,
+    });
 
     let window = MinimalSoftwareWindow::new(RepaintBufferType::ReusedBuffer);
     window.set_size(slint::PhysicalSize::new(
@@ -261,38 +250,46 @@ async fn main(spawner: Spawner) {
     log::info!("slint gui setup complete");
 
     // TASK: run the gui render loop
-    spawner
-        .spawn(render_loop(window, display))
-        .unwrap();
+    spawner.spawn(render_loop(window, display)).unwrap();
     let (bl, board) = board.backlight_peripheral();
-    let (wifi, board) = board.wifi_peripheral();
     let (rtc, board) = board.rtc_peripheral();
     let rtc_rc = Rc::new(rtc);
     let _ = spawner.spawn(fade_screen(bl)).unwrap();
 
-    let _ = spawner.spawn(connection(wifi.controller)).ok();
-    let _ = spawner.spawn(net_task(wifi.runner)).ok();
+    let _ = spawner
+        .spawn(run_wifi_controller(EspEmbassyWifiController::new(
+            controller,
+        )))
+        .ok();
+    let _ = spawner.spawn(net_task(runner)).ok();
 
-    let _ = spawner.spawn(ntp_task(wifi.stack, rtc_rc.clone()));
-    let _ = spawner.spawn(wifi_status_task(
-        wifi.stack,
-    ));
+    let ntp_client = NtpClient::new(stack);
+
+    let _ = spawner.spawn(run_ntp_client(ntp_client));
+    // let _ = spawner.spawn(wifi_status_task(stack));
     let _ = spawner.spawn(update_timer(rtc_rc.clone()));
 
     let recipe = Recipe::new().unwrap();
+
     recipe.show().expect("unable to show main window");
-    // recipe.run();
-    
+
     // run the controller event loop
-    let mut controller = Controller::new(&recipe, board);
+    let mut controller = Controller::new(&recipe, board, rtc_rc.clone());
     controller.run().await;
 }
 
 #[embassy_executor::task]
-async fn render_loop(
-    window: Rc<MinimalSoftwareWindow>,
-    display: DisplayImpl<ST7789>,
-) {
+async fn run_wifi_controller(mut wifi_controller: EspEmbassyWifiController<'static>) {
+    wifi_controller.connection().await;
+}
+
+#[embassy_executor::task]
+async fn net_task(mut runner: Runner<'static, WifiDevice<'static, WifiStaDevice>>) {
+    runner.run().await
+}
+
+#[embassy_executor::task]
+async fn render_loop(window: Rc<MinimalSoftwareWindow>, display: DisplayImpl<ST7789>) {
     // let display = displayRef;
 
     let mut buffer_provider = DrawBuffer {
@@ -300,6 +297,8 @@ async fn render_loop(
         buffer: &mut [slint::platform::software_renderer::Rgb565Pixel(0); 240],
     };
     loop {
+        log::trace!("{} - slint drawing start!", Instant::now().as_millis());
+
         let start = time::now();
         slint::platform::update_timers_and_animations();
         // let mut event_count = 0;
@@ -348,11 +347,17 @@ async fn render_loop(
         //     }
         // }
         // window.try_dispatch_event(event)
-        window.draw_if_needed(|renderer| {
+        let dirty = window.draw_if_needed(|renderer| {
             renderer.render_by_line(&mut buffer_provider);
         });
         let total = time::now() - start;
-        log::trace!("slint drawing time {}", total);
+        log::trace!(
+            "{} - slint drawing time {}, active anims: {}, dirty: {}",
+            Instant::now().as_millis(),
+            total,
+            window.has_active_animations(),
+            dirty
+        );
         if !window.has_active_animations() {
             if let Some(duration) = slint::platform::duration_until_next_timer_update() {
                 let millis = duration.as_millis().try_into().unwrap();
@@ -364,7 +369,13 @@ async fn render_loop(
                 .await;
             } else {
                 // https://github.com/slint-ui/slint/discussions/3994
-                controller::refresh_screen().await;
+                log::trace!(
+                    "{} - will sleep until refresh_screen asked",
+                    Instant::now().as_millis()
+                );
+                let _ = controller::refresh_screen().await;
+                // Timer::after(Duration::from_millis(10)).await;
+                log::trace!("{} - refresh_screen asked", Instant::now().as_millis());
             }
         } else {
             let pause_for_target_fps = SLINT_FRAME_DURATION_MS as i32 - total.to_millis() as i32;
@@ -379,7 +390,6 @@ async fn render_loop(
                 Timer::after(Duration::from_millis(pause_for_target_fps as u64)).await;
             } else {
                 log::trace!("will sleep for 1ms, late on FPS");
-
                 Timer::after(Duration::from_millis(1)).await;
             }
         }
@@ -398,7 +408,7 @@ async fn fade_screen(bl: LedChannel) {
         } else if bl_level < 50 {
             increase = true;
         }
-        log::trace!("Setting backlight to {}", bl_level);
+        // log::trace!("Setting backlight to {}", bl_level);
 
         Timer::after_millis(10).await;
         bl.set_duty(bl_level).unwrap();
@@ -417,42 +427,6 @@ async fn print_stats() {
         // HeapStats implements the Display and defmt::Format traits, so you can pretty-print the heap stats.
         log::info!("{}", stats);
         Timer::after_millis(1000).await;
-    }
-}
-
-#[embassy_executor::task]
-async fn connection(mut controller: WifiController<'static>) {
-    log::info!("start connection task");
-    log::info!("Device capabilities: {:?}", controller.capabilities());
-    loop {
-        match esp_wifi::wifi::wifi_state() {
-            WifiState::StaConnected => {
-                // wait until we're no longer connected
-                controller.wait_for_event(WifiEvent::StaDisconnected).await;
-                Timer::after(Duration::from_millis(5000)).await
-            }
-            _ => {}
-        }
-        if !matches!(controller.is_started(), Ok(true)) {
-            let client_config = Configuration::Client(ClientConfiguration {
-                ssid: SSID.try_into().unwrap(),
-                password: PASSWORD.try_into().unwrap(),
-                ..Default::default()
-            });
-            controller.set_configuration(&client_config).unwrap();
-            log::info!("Starting wifi");
-            controller.start_async().await.unwrap();
-            log::info!("Wifi started!");
-        }
-        log::info!("About to connect to {} with {}...", SSID, PASSWORD);
-
-        match controller.connect_async().await {
-            Ok(_) => log::info!("Wifi connected!"),
-            Err(e) => {
-                log::info!("Failed to connect to wifi: {e:?}");
-                Timer::after(Duration::from_millis(5000)).await
-            }
-        }
     }
 }
 
@@ -483,183 +457,28 @@ async fn wifi_status_task(stack: Stack<'static>) {
 }
 
 #[embassy_executor::task]
-async fn ntp_task(stack: Stack<'static>, rtc: Rc<RTCUtils>) {
-    loop {
-        if stack.is_link_up() {
-            break;
-        }
-        Timer::after(Duration::from_millis(500)).await;
-    }
-
-    log::info!("Waiting to get IP address...");
-
-    stack.wait_config_up().await;
-
-    loop {
-        if let Some(config) = stack.config_v4() {
-            log::info!("Got IP: {}", config.address);
-            break;
-        }
-        log::info!(".");
-        Timer::after(Duration::from_millis(500)).await;
-    }
-
-    let mut udp_rx_meta = [PacketMetadata::EMPTY; 16];
-    let mut udp_rx_buffer = [0; 1024];
-    let mut udp_tx_meta = [PacketMetadata::EMPTY; 16];
-    let mut udp_tx_buffer = [0; 1024];
-
-    let mut socket = UdpSocket::new(
-        stack,
-        &mut udp_rx_meta,
-        &mut udp_rx_buffer,
-        &mut udp_tx_meta,
-        &mut udp_tx_buffer,
-    );
-
-    // socket.set_timeout(Some(embassy_time::Duration::from_secs(10)));
-
-    socket.bind(123).unwrap();
-
-    let context = NtpContext::new(Timestamp::new(&rtc));
-
-    let ntp_addrs = stack
-        .dns_query(NTP_SERVER, DnsQueryType::A)
-        .await
-        .expect("Failed to resolve DNS");
-    if ntp_addrs.is_empty() {
-        log::error!("Failed to resolve DNS");
-    }
-    let mut start = DateTime::from_timestamp_nanos(0);
-    let mut now = DateTime::from_timestamp_micros(Instant::now().as_micros() as i64).unwrap();
-    let mut first = true;
-    loop {
-        let addr: IpAddr = ntp_addrs[0].into();
-
-        let result = get_time(SocketAddr::from((addr, 123)), &socket, context).await;
-        // let result = sntp_send_request(SocketAddr::from((addr, 123)), &socket, context).await.ok().unwrap();
-        // let response = sntp_process_response(SocketAddr::from((addr, 123)), &socket, context, result).await;
-        match result {
-            Ok(time) => {
-                let datetime = DateTime::from_timestamp(
-                    time.sec().into(),
-                    (time.sec_fraction() as u64 * 1_000_000_000 / 4_294_967_296) as u32,
-                )
-                .unwrap();
-                if (first) {
-                    start = datetime;
-                    now =
-                        DateTime::from_timestamp_micros(Instant::now().as_micros() as i64).unwrap();
-                    rtc.rtc.set_current_time(datetime.naive_local());
-                    rtc.ds1307
-                        .lock()
-                        .await
-                        .set_datetime(&datetime.naive_local())
-                        .ok();
-                    first = false;
-                }
-                let delta = rtc.rtc.current_time().and_utc() - start;
-                let delta_main_clock =
-                    DateTime::from_timestamp_micros(Instant::now().as_micros() as i64).unwrap()
-                        - now;
-                let delta_ntp = datetime - start;
-                log::info!(
-                    "Time: {:?} @ {}C, offset: {}, roundtrip: {}",
-                    datetime,
-                    rtc.temperature_sensor.get_temperature().to_celsius(),
-                    time.offset(),
-                    time.roundtrip()
-                );
-                log::info!(
-                    "Elapsed rtc: {}us, cpu: {}us, ntp: {}us",
-                    delta,
-                    delta_main_clock,
-                    delta_ntp
-                );
-                log::info!(
-                    "Deltas rtc/ntp: {}, cpu/ntp: {}",
-                    delta_ntp - delta,
-                    delta_ntp - delta_main_clock
-                );
-            }
-            Err(e) => {
-                log::error!("Error getting time: {:?}", e);
-            }
-        }
-
-        Timer::after(Duration::from_secs(15 * 60)).await; // Every 15 minutes
-    }
-}
-
-#[embassy_executor::task]
-async fn net_task(mut runner: Runner<'static, WifiDevice<'static, WifiStaDevice>>) {
-    runner.run().await
-}
-
-#[derive(Copy, Clone)]
-struct Timestamp<'a> {
-    duration: Duration,
-    rtc: &'a RTCUtils,
-}
-impl<'a> Timestamp<'a> {
-    fn new(rtc: &'a RTCUtils) -> Timestamp<'a> {
-        Timestamp {
-            duration: Duration::default(),
-            rtc,
-        }
-    }
-}
-
-impl<'a> NtpTimestampGenerator for Timestamp<'a> {
-    fn init(&mut self) {
-        self.duration = Duration::from_millis(
-            self.rtc
-                .rtc
-                .current_time()
-                .and_utc()
-                .timestamp_millis()
-                .try_into()
-                .unwrap_or(0),
-        );
-        log::info!(
-            "duration: {}ms, time: {}",
-            self.duration.as_millis(),
-            self.rtc.rtc.current_time().and_utc()
-        );
-    }
-
-    fn timestamp_sec(&self) -> u64 {
-        self.duration.as_secs()
-    }
-
-    fn timestamp_subsec_micros(&self) -> u32 {
-        (self.duration.as_micros() - self.duration.as_secs() * 1000000)
-            .try_into()
-            .unwrap()
-    }
+async fn run_ntp_client(ntp_client: NtpClient<'static>) {
+    ntp_client.run().await;
 }
 
 #[embassy_executor::task]
 async fn update_timer(rtc: Rc<RTCUtils>) {
     let mut visible = true;
     let mut last_value = 0;
+    let mut ticker = Ticker::every(Duration::from_millis(1000));
     loop {
-        let current_time = rtc
-            .ds1307
-            .lock()
-            .await
-            .datetime()
-            .map(|m| m.and_utc())
-            .unwrap_or(DateTime::from_timestamp_nanos(0))
-            .with_timezone(&Paris);
-        controller::send_action(Action::UpdateTime(current_time));
-        
+        let current_time = rtc.get_date_time().await;
+
         let actual = current_time.second() % 10;
         if (actual != last_value) {
             visible = !visible;
         }
         last_value = actual;
-        controller::send_action(Action::ShowMonster(visible));
+        controller::send_action(Action::MultipleActions(vec![
+            Action::ShowMonster(visible),
+            Action::UpdateTime(current_time, visible),
+        ]));
+
         log::debug!(
             "Setting visible monster: {} (actual: {}, last_value{}, current_time: {})",
             visible,
@@ -669,6 +488,10 @@ async fn update_timer(rtc: Rc<RTCUtils>) {
         );
         // trigger refresh
         // refresh_signal.signal(());
-        Timer::after_millis(100).await;
+
+        // Double trigger
+
+        ticker.next().await;
+        // Timer::after_millis(10).await;
     }
 }

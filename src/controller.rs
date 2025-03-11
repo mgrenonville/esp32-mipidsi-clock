@@ -1,21 +1,30 @@
 // Copyright © 2025 David Haig
 // SPDX-License-Identifier: MIT
 
+use alloc::{boxed::Box, rc::Rc, vec::Vec};
 use chrono::DateTime;
 use chrono_tz::Tz;
+use embassy_futures::join::join_array;
+use embassy_sync::{
+    blocking_mutex::raw::CriticalSectionRawMutex, channel::Channel, signal::Signal,
+    waitqueue::WakerRegistration,
+};
+use embassy_time::{Duration, Instant, Timer};
 use log::error;
-use embassy_sync::channel::Channel;
 use slint::{ComponentHandle, ToSharedString};
 use slint_generated::{Globals, Recipe, WifiState};
 
 use log::warn;
 
+use crate::board::Board;
+
 #[derive(Debug, Clone)]
 pub enum Action {
+    MultipleActions(Vec<Action>),
     HardwareUserBtnPressed(bool),
     TouchscreenToggleBtn(bool),
     WifiStateUpdate(WifiState),
-    UpdateTime(DateTime<Tz>),
+    UpdateTime(DateTime<Tz>, bool),
     ShowMonster(bool),
 }
 
@@ -28,11 +37,17 @@ type ActionChannelType =
     Channel<embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex, Action, 2>;
 
 type RefreshScreenChannelType =
-    Channel<embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex, (), 1>;
+    Channel<embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex, Action, 1>;
 
 pub static ACTION: ActionChannelType = Channel::new();
 pub static REFRESH_SIGNAL: RefreshScreenChannelType = Channel::new();
+pub static WAKER: WakerRegistration = WakerRegistration::new();
+static SOME_SIGNAL: Signal<CriticalSectionRawMutex, ()> = Signal::new();
 
+pub trait WallClock {
+    async fn get_date_time(&self) -> DateTime<Tz>;
+    async fn set_date_time(&self, datetime: chrono::DateTime<chrono_tz::Tz>);
+}
 // see mcu::hardware or simulator::hardware modules for impl
 // depending on features used
 pub trait Hardware {
@@ -41,19 +56,24 @@ pub trait Hardware {
     // fn green_led_set_low(&mut self) {}
 }
 
-pub struct Controller<'a, Hardware> {
+impl Hardware for Board {}
+
+pub struct Controller<'a, Hardware, WallClock> {
     main_window: &'a Recipe,
     hardware: Hardware,
+    wall_clock: Rc<WallClock>,
 }
 
-impl<'a, H> Controller<'a, H>
+impl<'a, H, WC> Controller<'a, H, WC>
 where
     H: Hardware,
+    WC: WallClock,
 {
-    pub fn new(main_window: &'a Recipe, hardware: H) -> Self {
+    pub fn new(main_window: &'a Recipe, hardware: H, wall_clock: Rc<WC>) -> Self {
         Self {
             main_window,
             hardware,
+            wall_clock,
         }
     }
 
@@ -76,8 +96,22 @@ where
 
     pub async fn process_action(&mut self, action: Action) -> Result<(), ()> {
         let globals = self.main_window.global::<Globals>();
+        log::info!("process_action: {:?}", action);
 
-        match action {
+        // Refresh has to be asked BEFORE updating
+        // see https://github.com/slint-ui/slint/discussions/3994#discussioncomment-7680584
+        match REFRESH_SIGNAL.try_send(action.clone()) {
+            Ok(_) => {
+                log::info!(
+                    "{} - trigger refresh: {:?}",
+                    Instant::now().as_millis(),
+                    action
+                );
+            }
+            Err(_) => warn!("refresh action queue full, could not add: {:?}", action),
+        };
+        Timer::after(Duration::from_millis(1)).await;
+        match action.clone() {
             Action::HardwareUserBtnPressed(is_pressed) => {
                 // globals.set_hardware_user_btn_pressed(is_pressed);
             }
@@ -89,20 +123,18 @@ where
                 }
             }
             Action::WifiStateUpdate(wifi_state) => globals.set_wifi_state(wifi_state),
-            Action::UpdateTime(current_time) => {
+            Action::UpdateTime(current_time, visible) => {
                 globals.set_name(current_time.format("%H:%M:%S").to_shared_string());
+                globals.set_show_monsters(visible)
             }
             Action::ShowMonster(monster) => globals.set_show_monsters(monster),
+            Action::MultipleActions(actions) => {
+                for a in actions.iter() {
+                    let _ = Box::pin(self.process_action(a.clone())).await;
+                }
+            }
         }
-        match REFRESH_SIGNAL.try_send(()) {
-            Ok(_) => {
-                // see loop in `fn run()` for dequeue
-            }
-            Err(a) => {
-                // this could happen because the controller is slow to respond or we are making too many requests
-                warn!("refresh action queue full, could not add: {:?}", a)
-            }
-        };
+
         Ok(())
     }
 
@@ -126,6 +158,12 @@ pub fn send_action(a: Action) {
     }
 }
 
-pub async fn refresh_screen() {
-    REFRESH_SIGNAL.receive().await;
+pub async fn refresh_screen() -> Action {
+    let r = REFRESH_SIGNAL.receive().await;
+    REFRESH_SIGNAL.clear();
+    r
+}
+
+pub fn empty_refresh_screen() {
+    REFRESH_SIGNAL.try_receive().ok();
 }

@@ -1,8 +1,10 @@
+use chrono::DateTime;
+use chrono_tz::Europe::Paris;
 use ds1307::Ds1307;
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex};
 use esp_hal::{gpio::Output, i2c::master::I2c, rtc_cntl::Rtc, tsens::TemperatureSensor};
 
-use crate::controller::Hardware;
+use crate::controller::{Hardware, WallClock};
 
 pub mod types {
     use embedded_hal_bus::spi::{ExclusiveDevice, NoDelay};
@@ -62,7 +64,6 @@ pub struct Wifi {
     >,
     pub controller: esp_wifi::wifi::WifiController<'static>,
 }
-
 
 pub struct Board<Backlight = (), ScreenSpi = (), Display = (), Wifi = (), RTCUtils = ()> {
     pub screen_backlight: Backlight,
@@ -206,7 +207,23 @@ impl<Backlight, ScreenSpi, Display, Wifi, RTCUtils>
         }
     }
 }
+use ds1307::DateTimeAccess;
+impl WallClock for RtcRelated {
+    async fn get_date_time(&self) -> chrono::DateTime<chrono_tz::Tz> {
+        self.ds1307
+            .lock()
+            .await
+            .datetime()
+            .map(|m| m.and_utc())
+            .unwrap_or(DateTime::from_timestamp_nanos(0))
+            .with_timezone(&Paris)
+    }
 
-impl<Backlight, ScreenSpi, Display, Wifi, RTCUtils> Hardware for Board<Backlight, ScreenSpi, Display, Wifi, RTCUtils> {
-    
+    async fn set_date_time(&self, datetime: chrono::DateTime<chrono_tz::Tz>) {
+        self.ds1307
+            .lock()
+            .await
+            .set_datetime(&datetime.naive_local())
+            .ok();
+    }
 }
