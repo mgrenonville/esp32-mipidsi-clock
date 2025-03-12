@@ -16,6 +16,7 @@ use slint_generated::{Globals, Recipe, WifiState};
 
 use log::warn;
 
+#[cfg(feature = "mcu")]
 use crate::board::Board;
 
 #[derive(Debug, Clone)]
@@ -55,7 +56,7 @@ pub trait Hardware {
 
     // fn green_led_set_low(&mut self) {}
 }
-
+#[cfg(feature = "mcu")]
 impl Hardware for Board {}
 
 pub struct Controller<'a, Hardware, WallClock> {

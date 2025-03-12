@@ -11,18 +11,18 @@ esp-backtrace = { version = "0.14.2", features = [
     "exception-handler",
     "panic-handler",
     "println",
-] }
-esp-alloc = { version = "0.6.0" }
-esp-println = { version = "0.12.0", features = ["esp32c6", "log"] }
+], optional = true }
+esp-alloc = { version = "0.6.0" , optional = true }
+esp-println = { version = "0.12.0", features = ["esp32c6", "log"] , optional = true }
 esp-wifi = { version = "0.12.0", features = [
     "esp32c6", 
     "wifi"
-] }
+] , optional = true}
 
 # embassy
-esp-hal-embassy = { version = "0.6.0", features = ["esp32c6"] }
+esp-hal-embassy = { version = "0.6.0", features = ["esp32c6"], optional = true }
 embassy-time = "0.4.0"
-embassy-executor = {version = "0.7.0" ,features = ["task-arena-size-8192"]}
+embassy-executor = {version = "0.7.0" ,features = ["task-arena-size-8192", "executor-thread"]}
 embassy-sync = "0.6.2"
 embassy-futures = "0.1.1"
 embassy-net = { version = "0.6.0", features = [ "tcp", "udp", "dhcpv4", "dns", "medium-ethernet", "packet-trace"] }
@@ -56,6 +56,11 @@ slint = { git = "https://github.com/slint-ui/slint", default-features = false, f
     "renderer-software",
 ] }
 
+env_logger = { version = "0.9.0", optional = true }
+sdl2 = { version = "0.37.0", optional = true }
+
+object-pool = { version = "0.6.0", optional = true }
+
 
 [build-dependencies]
 dotenvy = "0.15"
@@ -64,6 +69,11 @@ dotenvy = "0.15"
 default = ["mcu"]
 mcu = [   
      #"defmt",
+    "esp-hal-embassy/esp32c6",
+"esp-backtrace",
+"esp-alloc",
+"esp-println",
+"esp-wifi"
 
    # "defmt-rtt",
 #        "embassy-sync/defmt",
@@ -72,6 +82,21 @@ mcu = [
 #    "embassy-time/defmt-timestamp-uptime",
 
 ]
+
+
+simulator = [
+    "slint/renderer-software",
+    "slint/backend-winit",
+    "slint/std",
+    "embassy-executor/arch-std",
+    "embassy-time/std",
+    "env_logger",
+    "sdl2",
+    "object-pool",
+    "chrono/now",
+]
+
+
 esp32-c3 = ["esp-hal/esp32c3", "esp-println/esp32c3", "esp-wifi/esp32c3", "esp-backtrace/esp32c3"]
 esp32-c6 = ["esp-hal/esp32c6", "esp-println/esp32c6", "esp-wifi/esp32c6", "esp-backtrace/esp32c6"]
 
@@ -79,6 +104,12 @@ esp32-c6 = ["esp-hal/esp32c6", "esp-println/esp32c6", "esp-wifi/esp32c6", "esp-b
 [[bin]]
 name = "ui_esp32_ds1307_st7789"
 required-features = ["mcu"]
+
+
+
+[[bin]]
+name = "ui_simulator"
+required-features = ["simulator"]
 
 [target.riscv32imac-unknown-none-elf.dependencies]
 esp-hal = { version = "0.23.1", features = ["esp32c6"] }

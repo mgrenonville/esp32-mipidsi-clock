@@ -1,6 +1,6 @@
 use alloc::rc::Rc;
 
-use esp_hal::time;
+use embassy_time::Instant;
 use slint::platform::software_renderer::MinimalSoftwareWindow;
 
 pub struct EspEmbassyBackend {
@@ -21,10 +21,10 @@ impl slint::platform::Platform for EspEmbassyBackend {
     }
 
     fn duration_since_start(&self) -> core::time::Duration {
-        core::time::Duration::from_micros(time::now().duration_since_epoch().to_micros())
+        Instant::now().duration_since(Instant::from_secs(0)).into()
     }
 
     fn debug_log(&self, arguments: core::fmt::Arguments) {
-        esp_println::println!("{}", arguments);
+        log::debug!("{}", arguments);
     }
 }

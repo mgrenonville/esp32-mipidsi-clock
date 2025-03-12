@@ -254,7 +254,6 @@ async fn main(spawner: Spawner) {
     let (bl, board) = board.backlight_peripheral();
     let (rtc, board) = board.rtc_peripheral();
     let rtc_rc = Rc::new(rtc);
-    let _ = spawner.spawn(fade_screen(bl)).unwrap();
 
     let _ = spawner
         .spawn(run_wifi_controller(EspEmbassyWifiController::new(
@@ -265,8 +264,9 @@ async fn main(spawner: Spawner) {
 
     let ntp_client = NtpClient::new(stack);
 
+    let _ = spawner.spawn(fade_screen(bl, rtc_rc.clone())).unwrap();
     let _ = spawner.spawn(run_ntp_client(ntp_client));
-    // let _ = spawner.spawn(wifi_status_task(stack));
+    let _ = spawner.spawn(wifi_status_task(stack));
     let _ = spawner.spawn(update_timer(rtc_rc.clone()));
 
     let recipe = Recipe::new().unwrap();
@@ -398,25 +398,25 @@ async fn render_loop(window: Rc<MinimalSoftwareWindow>, display: DisplayImpl<ST7
 
 /** A task to prove that we can do other things that render_loops */
 #[embassy_executor::task]
-async fn fade_screen(bl: LedChannel) {
-    let mut bl_level = 20;
-
-    let mut increase = true;
+async fn fade_screen(bl: LedChannel, rtc: Rc<RTCUtils>) {
     loop {
-        if bl_level > 99 {
-            increase = false;
-        } else if bl_level < 50 {
-            increase = true;
+        let d = rtc.get_date_time().await;
+        let mut bl_level = 1;
+        if (d.hour() > 8 && d.hour() < 20) {
+            bl_level = 100;
+        } else if (d.hour() >= 20 && d.hour() < 21) {
+            bl_level = 30;
         }
-        // log::trace!("Setting backlight to {}", bl_level);
-
-        Timer::after_millis(10).await;
         bl.set_duty(bl_level).unwrap();
-        if increase {
-            bl_level = bl_level + 1;
-        } else {
-            bl_level = bl_level - 1;
-        }
+        log::trace!("Setting backlight to {}", bl_level);
+        Timer::after_secs(10).await;
+        // Timer::after_millis(10).await;
+        // bl.set_duty(bl_level).unwrap();
+        // if increase {
+        //     bl_level = bl_level + 1;
+        // } else {
+        //     bl_level = bl_level - 1;
+        // }
     }
 }
 
