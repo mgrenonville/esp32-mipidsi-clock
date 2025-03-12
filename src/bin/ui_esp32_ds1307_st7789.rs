@@ -401,7 +401,7 @@ async fn render_loop(window: Rc<MinimalSoftwareWindow>, display: DisplayImpl<ST7
 async fn fade_screen(bl: LedChannel, rtc: Rc<RTCUtils>) {
     loop {
         let d = rtc.get_date_time().await;
-        let mut bl_level = 1;
+        let mut bl_level = 5;
         if (d.hour() > 8 && d.hour() < 20) {
             bl_level = 100;
         } else if (d.hour() >= 20 && d.hour() < 21) {
