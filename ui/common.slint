@@ -1,11 +1,17 @@
 export enum WifiState {STARTING, LINK_UP, OK}
 
+export struct MonsterPosition{
+    x: int,
+    y: int, 
+    visible: bool,
+}
+
 export global Globals {
     in-out property <int> counter: 0;
     in property <WifiState> wifi_state;
 
     in-out property <string> name;
-    in property <bool> show_monsters;
+    in property <MonsterPosition> monster_position;
 }
 
 

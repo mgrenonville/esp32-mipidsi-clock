@@ -46,7 +46,7 @@ export component Recipe inherits Window {
             // circle2.x: 0px;
             // circle2.y: 0px;
             circle2.visible_on_screen: false;
-            circle1.source: @image-url("./img/test-pyxelate/test-factor-20-palette-16.png");
+            circle1.source: @image-url("./img/test_charmander.png");
             circle2.source: @image-url("./img/salameche-left.png");
             // in {
             //     animate circle1.x, circle2.x {
@@ -70,7 +70,7 @@ export component Recipe inherits Window {
             // }
         }
         right-aligned when Globals.counter <= 0: {
-            circle1.source: @image-url("./img/test-pyxelate/test-factor-20-palette-16.png");
+            circle1.source: @image-url("./img/test_charmander.png");
             circle2.source: @image-url("./img/salameche-right.png");
             // circle1.x: 220px;
             // circle1.y: 70px;
@@ -87,30 +87,7 @@ export component Recipe inherits Window {
             image-fit: ImageFit.fill;
             source: @image-url("./img/background_2.png");
             // image-fit default is `contain` when in layout, preserving aspect ratio
-            Rectangle {
-                
-                // background: root.background.darker(20%);
-                width: 240px;
-                x: 0px;
-                y: 139px;
-                height: 100px;
-                circle1 := Monster {
-                    y: 23px;
-                    x: 108px;
-                    width: 57px;
-                    clip: true;
-                    visible_on_screen: Globals.show_monsters;
-                    // height: 44px;
-                }
-
-                circle2 := Monster {
-                    x: 91px;
-                    y: 33px;
-                    width: 21px;
             
-                    // height: 18px;
-                }
-            }
         }
 
 
@@ -143,5 +120,30 @@ export component Recipe inherits Window {
                 colorize: darkblue;
             }
         ]
+    }
+    Rectangle {
+                
+        // background: black;
+        opacity: 100%;
+        width: 100%;
+        x: 0px;
+        y: 0px;
+        height: 100%;
+        circle1 := Monster {
+            y: Globals.monster_position.y * 1px;
+            x: Globals.monster_position.x * 1px;
+            // width: 41px;
+            clip: true;
+            visible_on_screen: Globals.monster_position.visible;
+            // height: 44px;
+        }
+
+        circle2 := Monster {
+            x: 91px;
+            y: 33px;
+            width: 21px;
+    
+            // height: 18px;
+        }
     }
 }

@@ -10,6 +10,7 @@ use embassy_sync::{
     waitqueue::WakerRegistration,
 };
 use embassy_time::{Duration, Instant, Timer};
+use embedded_graphics::prelude::Point;
 use log::error;
 use slint::{ComponentHandle, ToSharedString};
 use slint_generated::{Globals, Recipe, WifiState};
@@ -25,8 +26,8 @@ pub enum Action {
     HardwareUserBtnPressed(bool),
     TouchscreenToggleBtn(bool),
     WifiStateUpdate(WifiState),
-    UpdateTime(DateTime<Tz>, bool),
-    ShowMonster(bool),
+    UpdateTime(DateTime<Tz>),
+    ShowMonster(bool, Point),
 }
 
 #[cfg(feature = "mcu")]
@@ -124,11 +125,16 @@ where
                 }
             }
             Action::WifiStateUpdate(wifi_state) => globals.set_wifi_state(wifi_state),
-            Action::UpdateTime(current_time, visible) => {
-                globals.set_name(current_time.format("%H:%M:%S").to_shared_string());
-                globals.set_show_monsters(visible)
+            Action::UpdateTime(current_time) => {
+                globals.set_name(current_time.format("%H:%M:%S").to_shared_string())
             }
-            Action::ShowMonster(monster) => globals.set_show_monsters(monster),
+            Action::ShowMonster(monster, point) => {
+                globals.set_monster_position(slint_generated::MonsterPosition {
+                    visible: monster,
+                    x: point.x,
+                    y: point.y,
+                })
+            }
             Action::MultipleActions(actions) => {
                 for a in actions.iter() {
                     let _ = Box::pin(self.process_action(a.clone())).await;

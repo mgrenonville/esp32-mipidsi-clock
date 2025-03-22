@@ -13,6 +13,7 @@ use embassy_net::StackResources;
 use embassy_net::{Runner, Stack};
 use embassy_sync::mutex::Mutex;
 use embassy_time::{Duration, Instant, Ticker, Timer};
+use embedded_graphics::prelude::Point;
 use embedded_graphics::{draw_target::DrawTarget, pixelcolor::Rgb565, prelude::RgbColor};
 use embedded_hal_bus::spi::ExclusiveDevice;
 use esp32_mipidsi_clock::controller::WallClock;
@@ -66,7 +67,8 @@ use esp_wifi::{
 };
 use mipidsi::{
     interface::SpiInterface,
-    models::ST7789,
+    models::GC9A01,
+    // models::ST7789,
     options::{ColorInversion, TearingEffect},
     Builder,
 };
@@ -174,21 +176,21 @@ async fn main(spawner: Spawner) {
     // Define the display from the display interface and initialize it
     let mut delay = Delay::new();
 
-    let mut display = Builder::new(ST7789, di)
+    let mut display = Builder::new(GC9A01, di)
         .reset_pin(rst)
         .display_size(240, 240)
-        .color_order(mipidsi::options::ColorOrder::Rgb)
+        .color_order(mipidsi::options::ColorOrder::Bgr)
         .invert_colors(ColorInversion::Inverted)
         // .orientation(Orientation::new().rotate(Rotation::Deg180))
         .init(&mut delay)
         .unwrap();
 
-    // Make the display all
-    match display.set_tearing_effect(TearingEffect::Vertical) {
-        Ok(_) => log::info!("set_tearing_effect successful"),
-        Err(e) => log::info!("set_tearing_effect failed"),
-    };
-    display.clear(Rgb565::BLACK).unwrap();
+    // // Make the display all
+    // match display.set_tearing_effect(TearingEffect::Vertical) {
+    //     Ok(_) => log::info!("set_tearing_effect successful"),
+    //     Err(e) => log::info!("set_tearing_effect failed"),
+    // };
+    display.clear(Rgb565::WHITE).unwrap();
 
     let timg1 = TimerGroup::new(peripherals.TIMG1);
     let mut rng = Rng::new(peripherals.RNG);
@@ -289,7 +291,7 @@ async fn net_task(mut runner: Runner<'static, WifiDevice<'static, WifiStaDevice>
 }
 
 #[embassy_executor::task]
-async fn render_loop(window: Rc<MinimalSoftwareWindow>, display: DisplayImpl<ST7789>) {
+async fn render_loop(window: Rc<MinimalSoftwareWindow>, display: DisplayImpl<GC9A01>) {
     // let display = displayRef;
 
     let mut buffer_provider = DrawBuffer {
@@ -475,8 +477,8 @@ async fn update_timer(rtc: Rc<RTCUtils>) {
         }
         last_value = actual;
         controller::send_action(Action::MultipleActions(vec![
-            Action::ShowMonster(visible),
-            Action::UpdateTime(current_time, visible),
+            Action::ShowMonster(visible, Point { x: 17, y: 167 }),
+            Action::UpdateTime(current_time),
         ]));
 
         log::debug!(

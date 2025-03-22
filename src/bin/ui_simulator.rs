@@ -13,6 +13,7 @@
 // To run: `cargo run --bin ui_simulator --release --features=simulator`
 
 use std::{
+    cell::RefCell,
     rc::Rc,
     slice,
     sync::mpsc::{self, Receiver, Sender},
@@ -23,7 +24,9 @@ use std::{
 use chrono::{DateTime, Local};
 use chrono_tz::Europe::Paris;
 use embassy_executor::{Executor, Spawner};
+use embassy_sync::blocking_mutex::{CriticalSectionMutex, Mutex};
 use embassy_time::{Duration, Instant, Ticker, Timer};
+use embedded_graphics::prelude::Point;
 use esp32_mipidsi_clock::{
     controller::{self, Action, Controller, Hardware, WallClock},
     slintplatform::EspEmbassyBackend,
@@ -50,6 +53,9 @@ pub const DISPLAY_HEIGHT: usize = 240;
 
 static EXECUTOR: StaticCell<Executor> = StaticCell::new();
 static POOL: StaticCell<Pool<Vec<TargetPixelType>>> = StaticCell::new();
+
+static POSITION: CriticalSectionMutex<RefCell<Point>> =
+    CriticalSectionMutex::new(RefCell::new(Point { x: 0, y: 0 }));
 
 struct HardwareSim {}
 impl Hardware for HardwareSim {}
@@ -136,6 +142,24 @@ fn sdl2_render_loop(
                     keycode: Some(Keycode::LSHIFT),
                     ..
                 } => controller::send_action(Action::HardwareUserBtnPressed(true)),
+                Event::KeyDown {
+                    keycode: Some(Keycode::F1),
+                    ..
+                } => controller::send_action(Action::WifiStateUpdate(
+                    slint_generated::WifiState::STARTING,
+                )),
+                Event::KeyDown {
+                    keycode: Some(Keycode::F2),
+                    ..
+                } => controller::send_action(Action::WifiStateUpdate(
+                    slint_generated::WifiState::LINKUP,
+                )),
+                Event::KeyDown {
+                    keycode: Some(Keycode::F3),
+                    ..
+                } => {
+                    controller::send_action(Action::WifiStateUpdate(slint_generated::WifiState::OK))
+                }
                 Event::KeyUp {
                     keycode: Some(Keycode::LSHIFT),
                     ..
@@ -154,6 +178,7 @@ fn sdl2_render_loop(
                         let position = slint::PhysicalPosition::new(x, y).to_logical(1.0);
                         let event = WindowEvent::PointerPressed { position, button };
                         tx_event.send(event).unwrap();
+                        POSITION.lock(|r| r.replace(Point { x, y }));
                     }
                 }
                 Event::MouseButtonUp {
@@ -299,8 +324,6 @@ async fn embassy_render_loop(
     }
 }
 
-
-
 use chrono::Timelike;
 #[embassy_executor::task]
 async fn update_timer() {
@@ -314,10 +337,18 @@ async fn update_timer() {
         if (actual != last_value) {
             visible = !visible;
         }
+
+        let position = POSITION.lock(|r| r.as_ptr());
         last_value = actual;
         controller::send_action(Action::MultipleActions(vec![
-            Action::ShowMonster(visible),
-            Action::UpdateTime(current_time.with_timezone(&Paris), visible),
+            Action::ShowMonster(
+                visible,
+                Point {
+                    x: unsafe { (*position).x },
+                    y: unsafe { (*position).y },
+                },
+            ),
+            Action::UpdateTime(current_time.with_timezone(&Paris)),
         ]));
 
         log::debug!(
