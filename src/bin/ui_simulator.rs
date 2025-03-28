@@ -148,6 +148,20 @@ fn sdl2_render_loop(
                 } => controller::send_action(Action::WifiStateUpdate(
                     slint_generated::WifiState::STARTING,
                 )),
+
+                Event::KeyDown {
+                    keycode: Some(Keycode::F5),
+                    ..
+                } => controller::send_action(Action::TimeOfDayUpdate(
+                    slint_generated::TimeOfDay::DAY,
+                )),
+                Event::KeyDown {
+                    keycode: Some(Keycode::F6),
+                    ..
+                } => controller::send_action(Action::TimeOfDayUpdate(
+                    slint_generated::TimeOfDay::NIGHT,
+                )),
+
                 Event::KeyDown {
                     keycode: Some(Keycode::F2),
                     ..
@@ -347,6 +361,7 @@ async fn update_timer() {
                     x: unsafe { (*position).x },
                     y: unsafe { (*position).y },
                 },
+                slint_generated::MonsterEnv::OUTSIDE
             ),
             Action::UpdateTime(current_time.with_timezone(&Paris)),
         ]));

@@ -77,7 +77,7 @@ use slint::{
     ComponentHandle,
 };
 
-use slint_generated::{Globals, Recipe};
+use slint_generated::{Globals, Recipe, TimeOfDay};
 
 macro_rules! singleton {
     ($val:expr, $T:ty) => {{
@@ -144,7 +144,7 @@ async fn main(spawner: Spawner) {
     let cs = peripherals.GPIO4;
 
     // Define the reset pin as digital outputs and make it high
-    let mut rst = Output::new(peripherals.GPIO2, Level::Low);
+    let mut rst = Output::new(peripherals.GPIO3, Level::Low);
     rst.set_high();
 
     let (rx_buffer, rx_descriptors, tx_buffer, tx_descriptors) = dma_buffers!(2400, 2400);
@@ -155,7 +155,7 @@ async fn main(spawner: Spawner) {
     let spi = Spi::new(
         peripherals.SPI2,
         Config::default()
-            .with_frequency(60u32.MHz())
+            .with_frequency(80u32.MHz())
             .with_mode(Mode::_0),
     )
     .unwrap()
@@ -476,9 +476,18 @@ async fn update_timer(rtc: Rc<RTCUtils>) {
             visible = !visible;
         }
         last_value = actual;
+        let mut tod = TimeOfDay::DAY;
+        let mut point = Point { x: 125, y: 188 };
+        let mut env =  slint_generated::MonsterEnv::OUTSIDE;
+        if (current_time.hour() > 20 || current_time.hour() < 8) {
+            tod = TimeOfDay::NIGHT;
+            point = Point { x: 195, y: 143 };
+            env  = slint_generated::MonsterEnv::HOUSE;
+        }
         controller::send_action(Action::MultipleActions(vec![
-            Action::ShowMonster(visible, Point { x: 17, y: 167 }),
+            Action::ShowMonster(visible, point, env),
             Action::UpdateTime(current_time),
+            Action::TimeOfDayUpdate(tod),
         ]));
 
         log::debug!(

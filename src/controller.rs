@@ -11,9 +11,9 @@ use embassy_sync::{
 };
 use embassy_time::{Duration, Instant, Timer};
 use embedded_graphics::prelude::Point;
-use log::error;
+use log::{debug, error};
 use slint::{ComponentHandle, ToSharedString};
-use slint_generated::{Globals, Recipe, WifiState};
+use slint_generated::{Globals, MonsterEnv, Recipe, TimeOfDay, WifiState};
 
 use log::warn;
 
@@ -26,13 +26,14 @@ pub enum Action {
     HardwareUserBtnPressed(bool),
     TouchscreenToggleBtn(bool),
     WifiStateUpdate(WifiState),
+    TimeOfDayUpdate(TimeOfDay),
     UpdateTime(DateTime<Tz>),
-    ShowMonster(bool, Point),
+    ShowMonster(bool, Point, MonsterEnv),
 }
 
 #[cfg(feature = "mcu")]
 type ActionChannelType =
-    Channel<embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex, Action, 2>;
+    Channel<embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex, Action, 4>;
 
 #[cfg(feature = "simulator")]
 type ActionChannelType =
@@ -110,7 +111,7 @@ where
                     action
                 );
             }
-            Err(_) => warn!("refresh action queue full, could not add: {:?}", action),
+            Err(_) => debug!("refresh action queue full, could not add: {:?}", action),
         };
         Timer::after(Duration::from_millis(1)).await;
         match action.clone() {
@@ -126,14 +127,18 @@ where
             }
             Action::WifiStateUpdate(wifi_state) => globals.set_wifi_state(wifi_state),
             Action::UpdateTime(current_time) => {
-                globals.set_name(current_time.format("%H:%M:%S").to_shared_string())
+                globals.set_name(current_time.format("%H:%M").to_shared_string())
             }
-            Action::ShowMonster(monster, point) => {
+            Action::ShowMonster(monster, point, env) => {
                 globals.set_monster_position(slint_generated::MonsterPosition {
                     visible: monster,
                     x: point.x,
                     y: point.y,
-                })
+                    env,
+                });
+            }
+            Action::TimeOfDayUpdate(tod) => {
+                globals.set_time_of_day(tod);
             }
             Action::MultipleActions(actions) => {
                 for a in actions.iter() {

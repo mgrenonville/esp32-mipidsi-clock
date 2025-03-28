@@ -2,95 +2,20 @@ import { HorizontalBox, VerticalBox, Button, Spinner } from "std-widgets.slint";
 import "assets/editundo.ttf";
 
 import { Globals, WifiState } from "common.slint";
+import { World , Monster} from "background.slint";
 export { Globals }
-
-
-component Monster inherits Rectangle {
-    in property <bool> visible_on_screen: true;
-    in property <image> source;
-    clip: true;
-    height: img.height;
-    // border-width: 1px;
-    // border-color: black;
-    states [
-        visible when visible_on_screen: {
-            img.y: 0px;
-        }
-        not_visible when !visible_on_screen: {
-            img.y: img.height;
-        }
-    ]
-    img := Image {
-        horizontal-tiling: ImageTiling.none;
-        image-rendering: ImageRendering.pixelated;
-        source: source;
-        visible: true;
-        animate y {
-            easing: linear;
-            duration: 500ms;
-        }
-    }
-    // border-radius: root.width / 2;
-}
 
 export component Recipe inherits Window {
     default-font-family: "Edit Undo BRK";
     always-on-top: false;
-  
     height: 240px;
     width: 240px;
-    states [
-        left-aligned when Globals.counter > 0: {
-            // circle1.x: 0px;
-            // circle1.y: 40px;
-            // circle2.x: 0px;
-            // circle2.y: 0px;
-            circle2.visible_on_screen: false;
-            circle1.source: @image-url("./img/test_charmander.png");
-            circle2.source: @image-url("./img/salameche-left.png");
-            // in {
-            //     animate circle1.x, circle2.x {
-            //         duration: 750ms;
-            //         easing: ease-in-out-circ;
-            //     }
-            //     animate circle1.y, circle2.y {
-            //         duration: 250ms;
-            //         easing: ease-in-out-circ;
-            //     }
-            // }
-            // out {
-            //     animate circle1.x, circle2.x {
-            //         duration: 750ms;
-            //         easing: ease-in-out-circ;
-            //     }
-            //     animate circle1.y, circle2.y {
-            //         duration: 250ms;
-            //         easing: ease-in-out-circ;
-            //     }
-            // }
-        }
-        right-aligned when Globals.counter <= 0: {
-            circle1.source: @image-url("./img/test_charmander.png");
-            circle2.source: @image-url("./img/salameche-right.png");
-            // circle1.x: 220px;
-            // circle1.y: 70px;
-            // circle2.x: 220px;
-            // circle2.y: 00px;
-            circle2.visible_on_screen: true;
-        }
-    ]
 
-    VerticalLayout {
-
-        Image {
-            horizontal-tiling: ImageTiling.none;
-            image-fit: ImageFit.fill;
-            source: @image-url("./img/background_2.png");
-            // image-fit default is `contain` when in layout, preserving aspect ratio
-            
-        }
-
-
+    world := World {
+        monster: @image-url("img/anims/c-1-open.jpg");
+        // monster: @image-url("img/test_charmander.png");
+        position: Globals.monster_position;
+        time_of_day: Globals.time_of_day;
     }
 
     VerticalBox {
@@ -100,10 +25,18 @@ export component Recipe inherits Window {
             Text {
                 font-family: "Edit Undo BRK";
                 font-size: 72px;
+                horizontal-alignment: TextHorizontalAlignment.center;
                 text: Globals.name;
             }
         }
     }
+
+    // monster_outside := Monster {
+    //     img_source: @image-url("img/test_charmander.png");
+    //     visible_on_screen: Globals.monster_position.visible;
+    //     x: Globals.monster_position.x * 1px;
+    //     y: Globals.monster_position.y * 1px;
+    // }
 
     Image {
         source: @image-url("img/wifi.png");
@@ -120,30 +53,5 @@ export component Recipe inherits Window {
                 colorize: darkblue;
             }
         ]
-    }
-    Rectangle {
-                
-        // background: black;
-        opacity: 100%;
-        width: 100%;
-        x: 0px;
-        y: 0px;
-        height: 100%;
-        circle1 := Monster {
-            y: Globals.monster_position.y * 1px;
-            x: Globals.monster_position.x * 1px;
-            // width: 41px;
-            clip: true;
-            visible_on_screen: Globals.monster_position.visible;
-            // height: 44px;
-        }
-
-        circle2 := Monster {
-            x: 91px;
-            y: 33px;
-            width: 21px;
-    
-            // height: 18px;
-        }
     }
 }
