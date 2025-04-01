@@ -156,7 +156,7 @@ async fn main(spawner: Spawner) {
     let spi = Spi::new(
         peripherals.SPI2,
         Config::default()
-            .with_frequency(60u32.MHz())
+            .with_frequency(80u32.MHz())
             .with_mode(Mode::_0),
     )
     .unwrap()
@@ -387,7 +387,6 @@ async fn render_loop(window: Rc<MinimalSoftwareWindow>, display: DisplayImpl<GC9
                     pause_for_target_fps,
                     SLINT_TARGET_FPS
                 );
-
                 Timer::after(Duration::from_millis(pause_for_target_fps as u64)).await;
             } else {
                 log::trace!("will sleep for 1ms, late on FPS");
@@ -478,7 +477,7 @@ async fn update_timer(rtc: Rc<RTCUtils>) {
         let mut tod = TimeOfDay::DAY;
         let mut point = Point { x: 125, y: 188 };
         let mut env = slint_generated::MonsterEnv::OUTSIDE;
-        if (current_time.hour() > 20 || current_time.hour() < 8) {
+        if (current_time.hour() >= 20 || current_time.hour() < 8) {
             tod = TimeOfDay::NIGHT;
             point = Point { x: 195, y: 143 };
             env = slint_generated::MonsterEnv::HOUSE;
