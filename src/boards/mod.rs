@@ -1,7 +1,6 @@
+use crate::board::types::DisplayImpl;
 use embedded_graphics::{pixelcolor::raw::RawU16, prelude::RgbColor};
 use mipidsi::{interface::InterfacePixelFormat, models::Model};
-
-use crate::board::types::DisplayImpl;
 
 pub struct DrawBuffer<'a, Display> {
     pub display: Display,
@@ -25,7 +24,13 @@ where
         render_fn: impl FnOnce(&mut [slint::platform::software_renderer::Rgb565Pixel]),
     ) {
         let buffer = &mut self.buffer[range.clone()];
-
+        log::debug!(
+            "Redraw l: {}, range: {}-{} ({})",
+            line,
+            range.start,
+            range.end,
+            range.end - range.start
+        );
         render_fn(buffer);
 
         // We send empty data just to get the device in the right window
@@ -33,7 +38,7 @@ where
             .set_pixels(
                 range.start as u16,
                 line as _,
-                range.end as u16,
+                (range.end - 1) as u16, // Range are inclusive /!\
                 line as u16,
                 buffer.iter().map(|x| RawU16::new(x.0).into()),
             )
