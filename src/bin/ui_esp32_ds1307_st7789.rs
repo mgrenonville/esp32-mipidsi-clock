@@ -481,7 +481,7 @@ async fn update_timer(rtc: Rc<RTCUtils>) {
         if (current_time.hour() > 20 || current_time.hour() < 8) {
             tod = TimeOfDay::NIGHT;
             point = Point { x: 195, y: 143 };
-            env  = slint_generated::MonsterEnv::HOUSE;
+            env = slint_generated::MonsterEnv::HOUSE;
         }
         controller::send_action(Action::MultipleActions(vec![
             Action::ShowMonster(visible, point, env),

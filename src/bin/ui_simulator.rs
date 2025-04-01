@@ -361,7 +361,7 @@ async fn update_timer() {
                     x: unsafe { (*position).x },
                     y: unsafe { (*position).y },
                 },
-                slint_generated::MonsterEnv::OUTSIDE
+                slint_generated::MonsterEnv::OUTSIDE,
             ),
             Action::UpdateTime(current_time.with_timezone(&Paris)),
         ]));

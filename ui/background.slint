@@ -1,0 +1,127 @@
+import { TimeOfDay, MonsterEnv, MonsterPosition } from "common.slint";
+
+
+
+
+export component Monster inherits Rectangle {
+    in property <bool> visible_on_screen: true;
+    in property <image> img_source;
+    clip: true;
+    height:  img.height;
+    width:  img.width;
+    states [
+        visible when visible_on_screen: {
+            img.y: 0px;
+        }
+        not_visible when !visible_on_screen: {
+            img.y: img.height;
+        }
+    ]
+    img := Image {
+        horizontal-alignment: ImageHorizontalAlignment.center;
+        vertical-alignment: ImageVerticalAlignment.center;
+        horizontal-tiling: ImageTiling.none;
+        image-rendering: ImageRendering.pixelated;
+        source: img_source;
+        visible: true;
+        animate y {
+            easing: linear;
+            duration: 500ms;
+        }
+    }
+
+}
+
+export component World inherits Rectangle {
+    in property <TimeOfDay> time_of_day;
+    in property <MonsterPosition> position;
+
+    in property <image> monster;
+
+    states [
+        house when position.env == MonsterEnv.HOUSE: {
+            monster_in_house.visible: true;
+            monster_outside.visible: false;
+        }
+
+        outside when  position.env == MonsterEnv.OUTSIDE: {
+            monster_in_house.visible: false;
+            monster_outside.visible: true;
+        }
+
+    ]
+
+    sky := Image {
+        states [
+            night when time_of_day == TimeOfDay.EVENING || time_of_day == TimeOfDay.NIGHT: {
+                source: @image-url("./img/layers/99-sky-night.png");
+            }
+            day when time_of_day == TimeOfDay.DAY: {
+                source: @image-url("./img/layers/99-sky.png");
+            }
+        ]
+    }
+
+    bg := Image {
+        states [
+            night when time_of_day == TimeOfDay.EVENING || time_of_day == TimeOfDay.NIGHT: {
+                source: @image-url("./img/layers/98-background-night.png");
+            }
+            day when time_of_day == TimeOfDay.DAY: {
+                source: @image-url("./img/layers/98-background.png");
+            }
+        ]
+    }
+
+
+    monster_in_house := Monster {
+        img_source: monster;
+        visible_on_screen: position.visible;
+        x: position.x * 1px;
+        y: position.y * 1px;
+    }
+
+
+    house := Image {
+        states [
+            night when time_of_day == TimeOfDay.EVENING || time_of_day == TimeOfDay.NIGHT: {
+                source: @image-url("./img/layers/0-house-night.png");
+            }
+            day when time_of_day == TimeOfDay.DAY: {
+                source: @image-url("./img/layers/0-house.png");
+            }
+        ]
+    }
+
+
+    window := Image {
+        states [
+            night when time_of_day == TimeOfDay.EVENING || time_of_day == TimeOfDay.NIGHT: {
+                source: @image-url("./img/layers/1-windows-night.png");
+            }
+            day when time_of_day == TimeOfDay.DAY: {
+                source: @image-url("./img/layers/1-windows.png");
+            }
+        ]
+    }
+    monster_outside := Monster {
+        img_source: monster;
+        visible_on_screen: position.visible;
+        x: position.x * 1px;
+        y: position.y * 1px;
+
+    }
+
+    fence := Image {
+        states [
+            night when time_of_day == TimeOfDay.EVENING || time_of_day == TimeOfDay.NIGHT: {
+                source: @image-url("./img/layers/2-fence-night.png");
+            }
+            day when time_of_day == TimeOfDay.DAY: {
+                source: @image-url("./img/layers/2-fence.png");
+            }
+        ]
+        
+
+    }
+}
