@@ -12,8 +12,7 @@ export component Recipe inherits Window {
     width: 240px;
 
     world := World {
-        monster: @image-url("img/anims/c-1-open.jpg");
-        // monster: @image-url("img/test_charmander.png");
+        monster: @image-url("img/anims/c-1-open.png");
         position: Globals.monster_position;
         time_of_day: Globals.time_of_day;
     }
@@ -30,13 +29,6 @@ export component Recipe inherits Window {
             }
         }
     }
-
-    // monster_outside := Monster {
-    //     img_source: @image-url("img/test_charmander.png");
-    //     visible_on_screen: Globals.monster_position.visible;
-    //     x: Globals.monster_position.x * 1px;
-    //     y: Globals.monster_position.y * 1px;
-    // }
 
     Image {
         source: @image-url("img/wifi.png");

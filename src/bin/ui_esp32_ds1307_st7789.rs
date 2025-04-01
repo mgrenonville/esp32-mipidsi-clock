@@ -13,7 +13,8 @@ use embassy_net::StackResources;
 use embassy_net::{Runner, Stack};
 use embassy_sync::mutex::Mutex;
 use embassy_time::{Duration, Instant, Ticker, Timer};
-use embedded_graphics::prelude::Point;
+use embedded_graphics::prelude::{Point, Size};
+use embedded_graphics::primitives::Rectangle;
 use embedded_graphics::{draw_target::DrawTarget, pixelcolor::Rgb565, prelude::RgbColor};
 use embedded_hal_bus::spi::ExclusiveDevice;
 use esp32_mipidsi_clock::controller::WallClock;
@@ -147,7 +148,7 @@ async fn main(spawner: Spawner) {
     let mut rst = Output::new(peripherals.GPIO3, Level::Low);
     rst.set_high();
 
-    let (rx_buffer, rx_descriptors, tx_buffer, tx_descriptors) = dma_buffers!(2400, 2400);
+    let (rx_buffer, rx_descriptors, tx_buffer, tx_descriptors) = dma_buffers!(240, 240);
     let dma_rx_buf = DmaRxBuf::new(rx_descriptors, rx_buffer).unwrap();
     let dma_tx_buf = DmaTxBuf::new(tx_descriptors, tx_buffer).unwrap();
 
@@ -155,7 +156,7 @@ async fn main(spawner: Spawner) {
     let spi = Spi::new(
         peripherals.SPI2,
         Config::default()
-            .with_frequency(80u32.MHz())
+            .with_frequency(60u32.MHz())
             .with_mode(Mode::_0),
     )
     .unwrap()
@@ -191,6 +192,7 @@ async fn main(spawner: Spawner) {
     //     Err(e) => log::info!("set_tearing_effect failed"),
     // };
     display.clear(Rgb565::WHITE).unwrap();
+    // display.clear(Rgb565::RED).unwrap();
 
     let timg1 = TimerGroup::new(peripherals.TIMG1);
     let mut rng = Rng::new(peripherals.RNG);
@@ -231,7 +233,7 @@ async fn main(spawner: Spawner) {
     ds1307.set_running().ok();
 
     // let datetime = ds1307.datetime().unwrap();
-    log::info!("DS1307: {}", ds1307.running().ok().unwrap());
+    // log::info!("DS1307: {}", ds1307.running().ok().unwrap());
     let board = Board::new().backlight(channel0).rtc(RtcRelated {
         ds1307: Mutex::new(ds1307),
         rtc,
@@ -243,10 +245,7 @@ async fn main(spawner: Spawner) {
         DISPLAY_WIDTH as u32,
         DISPLAY_HEIGHT as u32,
     ));
-    let backend = Box::new(EspEmbassyBackend::new(
-        // &inner_main,
-        window.clone(),
-    ));
+    let backend = Box::new(EspEmbassyBackend::new(window.clone()));
 
     slint::platform::set_platform(backend).expect("backend already initialized");
     log::info!("slint gui setup complete");
@@ -478,7 +477,7 @@ async fn update_timer(rtc: Rc<RTCUtils>) {
         last_value = actual;
         let mut tod = TimeOfDay::DAY;
         let mut point = Point { x: 125, y: 188 };
-        let mut env =  slint_generated::MonsterEnv::OUTSIDE;
+        let mut env = slint_generated::MonsterEnv::OUTSIDE;
         if (current_time.hour() > 20 || current_time.hour() < 8) {
             tod = TimeOfDay::NIGHT;
             point = Point { x: 195, y: 143 };
