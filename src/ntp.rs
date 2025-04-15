@@ -1,15 +1,20 @@
 use core::net::{IpAddr, SocketAddr};
 
 use alloc::rc::Rc;
-use chrono::{offset, DateTime, TimeDelta, Utc};
+use chrono::{offset, DateTime, NaiveDateTime, TimeDelta, Utc};
 use embassy_net::{udp::UdpSocket, Stack};
+use embassy_sync::{channel::Channel, signal::Signal};
 use embassy_time::{Duration, Instant, Timer};
 use smoltcp::{storage::PacketMetadata, wire::DnsQueryType};
 use sntpc::{get_time, NtpContext, NtpTimestampGenerator};
 
-use crate::controller::Hardware;
+use crate::controller::{Hardware, WallClock};
 
 const NTP_SERVER: &str = "pool.ntp.org";
+
+type DateTimeSource =
+    Signal<embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex, DateTime<Utc>>;
+pub static DATE_SOURCE: DateTimeSource = Signal::new();
 
 #[derive(Copy, Clone)]
 struct Timestamp {
@@ -139,6 +144,7 @@ impl<'a> NtpClient<'a> {
                     //     DateTime::from_timestamp_micros(Instant::now().as_micros() as i64).unwrap()
                     //         - now;
                     let delta_ntp = datetime - start;
+                    DATE_SOURCE.signal(datetime);
                     log::info!(
                         "Time: {:?}, offset: {}, roundtrip: {}",
                         datetime,
@@ -166,7 +172,7 @@ impl<'a> NtpClient<'a> {
         }
     }
 
-    pub fn get_date_time(self) -> DateTime<Utc> {
+    pub fn get_date_time(&self) -> DateTime<Utc> {
         let mut context = self.context.clone();
         context.timestamp_gen.init();
         DateTime::from_timestamp(
@@ -175,4 +181,11 @@ impl<'a> NtpClient<'a> {
         )
         .unwrap()
     }
+}
+pub fn now() -> Option<DateTime<Utc>> {
+    DATE_SOURCE.try_take()
+}
+
+pub async fn await_now() -> DateTime<Utc> {
+    DATE_SOURCE.wait().await
 }

@@ -21,7 +21,7 @@ use std::{
     vec::Vec,
 };
 
-use chrono::{DateTime, Local};
+use chrono::{DateTime, Local, Utc};
 use chrono_tz::Europe::Paris;
 use embassy_executor::{Executor, Spawner};
 use embassy_sync::blocking_mutex::{CriticalSectionMutex, Mutex};
@@ -62,11 +62,11 @@ impl Hardware for HardwareSim {}
 
 struct WallClockSim {}
 impl WallClock for WallClockSim {
-    async fn get_date_time(&self) -> chrono::DateTime<chrono_tz::Tz> {
-        Local::now().with_timezone(&Paris)
+    async fn get_date_time(&self) -> chrono::DateTime<Utc> {
+        Local::now().with_timezone(&Utc)
     }
 
-    async fn set_date_time(&self, datetime: chrono::DateTime<chrono_tz::Tz>) {
+    async fn set_date_time(&self, datetime: chrono::DateTime<Utc>) {
         ()
     }
 }

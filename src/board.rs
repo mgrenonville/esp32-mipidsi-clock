@@ -1,6 +1,6 @@
-use chrono::DateTime;
+use chrono::{DateTime, Utc};
 use chrono_tz::Europe::Paris;
-use ds1307::Ds1307;
+use ds323x::Ds323x;
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex};
 use esp_hal::{gpio::Output, i2c::master::I2c, rtc_cntl::Rtc, tsens::TemperatureSensor};
 
@@ -51,7 +51,13 @@ pub struct SpiScreen<SPI> {
 }
 
 pub struct RtcRelated {
-    pub ds1307: Mutex<NoopRawMutex, Ds1307<I2c<'static, esp_hal::Blocking>>>,
+    pub ds1307: Mutex<
+        NoopRawMutex,
+        Ds323x<
+            ds323x::interface::I2cInterface<I2c<'static, esp_hal::Blocking>>,
+            ds323x::ic::DS3231,
+        >,
+    >,
     pub rtc: Rtc<'static>,
     pub temperature_sensor: TemperatureSensor<'static>,
 }
@@ -207,19 +213,19 @@ impl<Backlight, ScreenSpi, Display, Wifi, RTCUtils>
         }
     }
 }
-use ds1307::DateTimeAccess;
+use ds323x::DateTimeAccess;
+
 impl WallClock for RtcRelated {
-    async fn get_date_time(&self) -> chrono::DateTime<chrono_tz::Tz> {
+    async fn get_date_time(&self) -> chrono::DateTime<Utc> {
         self.ds1307
             .lock()
             .await
             .datetime()
             .map(|m| m.and_utc())
             .unwrap_or(DateTime::from_timestamp_nanos(0))
-            .with_timezone(&Paris)
     }
 
-    async fn set_date_time(&self, datetime: chrono::DateTime<chrono_tz::Tz>) {
+    async fn set_date_time(&self, datetime: chrono::DateTime<Utc>) {
         self.ds1307
             .lock()
             .await

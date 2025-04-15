@@ -9,6 +9,7 @@ export component Monster inherits Rectangle {
     clip: true;
     height:  img.height;
     width:  img.width;
+    
     states [
         visible when visible_on_screen: {
             img.y: 0px;
@@ -25,7 +26,7 @@ export component Monster inherits Rectangle {
         source: img_source;
         visible: true;
         animate y {
-            easing: linear;
+            easing: ease-in-out-back;
             duration: 500ms;
         }
     }

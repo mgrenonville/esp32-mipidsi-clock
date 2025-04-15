@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 use alloc::{boxed::Box, rc::Rc, vec::Vec};
-use chrono::DateTime;
+use chrono::{DateTime, Utc};
 use chrono_tz::Tz;
 use embassy_futures::join::join_array;
 use embassy_sync::{
@@ -48,8 +48,8 @@ pub static WAKER: WakerRegistration = WakerRegistration::new();
 static SOME_SIGNAL: Signal<CriticalSectionRawMutex, ()> = Signal::new();
 
 pub trait WallClock {
-    async fn get_date_time(&self) -> DateTime<Tz>;
-    async fn set_date_time(&self, datetime: chrono::DateTime<chrono_tz::Tz>);
+    async fn get_date_time(&self) -> DateTime<Utc>;
+    async fn set_date_time(&self, datetime: chrono::DateTime<Utc>);
 }
 // see mcu::hardware or simulator::hardware modules for impl
 // depending on features used

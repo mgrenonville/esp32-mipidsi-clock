@@ -4,21 +4,23 @@
 
 extern crate alloc;
 
+use core::future::IntoFuture;
+
 use alloc::vec;
 use alloc::{boxed::Box, rc::Rc};
 use chrono::Timelike;
+use chrono_tz::Europe::Paris;
 use embassy_executor::Spawner;
 use embassy_futures::select::select;
 use embassy_net::StackResources;
 use embassy_net::{Runner, Stack};
 use embassy_sync::mutex::Mutex;
 use embassy_time::{Duration, Instant, Ticker, Timer};
-use embedded_graphics::prelude::{Point, Size};
-use embedded_graphics::primitives::Rectangle;
+use embedded_graphics::prelude::Point;
 use embedded_graphics::{draw_target::DrawTarget, pixelcolor::Rgb565, prelude::RgbColor};
 use embedded_hal_bus::spi::ExclusiveDevice;
 use esp32_mipidsi_clock::controller::WallClock;
-use esp32_mipidsi_clock::ntp::NtpClient;
+use esp32_mipidsi_clock::ntp::{await_now, now, NtpClient};
 use esp32_mipidsi_clock::wifi::EspEmbassyWifiController;
 use esp_hal::{
     clock::CpuClock,
@@ -48,7 +50,7 @@ use esp_hal::{
 
 use esp_backtrace as _;
 
-use ds1307::Ds1307;
+use ds323x::{DateTimeAccess, Ds323x, NaiveDate};
 use esp32_mipidsi_clock::{
     board::{types::LedChannel, Board},
     boards::DrawBuffer,
@@ -66,6 +68,7 @@ use esp_wifi::{
     wifi::{WifiDevice, WifiStaDevice},
     EspWifiController,
 };
+use log::{info, log};
 use mipidsi::{
     interface::SpiInterface,
     models::GC9A01,
@@ -140,7 +143,6 @@ async fn main(spawner: Spawner) {
 
     let dc = Output::new(peripherals.GPIO15, Level::Low);
     let sck = peripherals.GPIO18;
-    let miso = peripherals.GPIO22;
     let mosi = peripherals.GPIO19;
     let cs = peripherals.GPIO4;
 
@@ -148,7 +150,7 @@ async fn main(spawner: Spawner) {
     let mut rst = Output::new(peripherals.GPIO3, Level::Low);
     rst.set_high();
 
-    let (rx_buffer, rx_descriptors, tx_buffer, tx_descriptors) = dma_buffers!(240, 240);
+    let (rx_buffer, rx_descriptors, tx_buffer, tx_descriptors) = dma_buffers!(1, 240);
     let dma_rx_buf = DmaRxBuf::new(rx_descriptors, rx_buffer).unwrap();
     let dma_tx_buf = DmaTxBuf::new(tx_descriptors, tx_buffer).unwrap();
 
@@ -162,7 +164,6 @@ async fn main(spawner: Spawner) {
     .unwrap()
     .with_sck(sck)
     .with_mosi(mosi)
-    .with_miso(miso)
     .with_dma(peripherals.DMA_CH0)
     .with_buffers(dma_rx_buf, dma_tx_buf)
     .into_async();
@@ -229,13 +230,17 @@ async fn main(spawner: Spawner) {
         .with_scl(peripherals.GPIO6)
         .with_sda(peripherals.GPIO7);
 
-    let mut ds1307 = Ds1307::new(i2c);
-    ds1307.set_running().ok();
+    // let mut ds1307 = Ds1307::new(i2c);
+    let mut ds3231: Ds323x<
+        ds323x::interface::I2cInterface<I2c<'_, esp_hal::Blocking>>,
+        ds323x::ic::DS3231,
+    > = Ds323x::new_ds3231(i2c);
+    // ds1307.set_running().ok();
 
     // let datetime = ds1307.datetime().unwrap();
     // log::info!("DS1307: {}", ds1307.running().ok().unwrap());
     let board = Board::new().backlight(channel0).rtc(RtcRelated {
-        ds1307: Mutex::new(ds1307),
+        ds1307: Mutex::new(ds3231),
         rtc,
         temperature_sensor: tsen,
     });
@@ -267,7 +272,9 @@ async fn main(spawner: Spawner) {
 
     let _ = spawner.spawn(fade_screen(bl, rtc_rc.clone())).unwrap();
     let _ = spawner.spawn(run_ntp_client(ntp_client));
+    let _ = spawner.spawn(update_rtc_with_ntp(rtc_rc.clone()));
     let _ = spawner.spawn(wifi_status_task(stack));
+
     let _ = spawner.spawn(update_timer(rtc_rc.clone()));
 
     let recipe = Recipe::new().unwrap();
@@ -400,7 +407,7 @@ async fn render_loop(window: Rc<MinimalSoftwareWindow>, display: DisplayImpl<GC9
 #[embassy_executor::task]
 async fn fade_screen(bl: LedChannel, rtc: Rc<RTCUtils>) {
     loop {
-        let d = rtc.get_date_time().await;
+        let d = rtc.get_date_time().await.with_timezone(&Paris);
         let mut bl_level = 5;
         if (d.hour() > 8 && d.hour() < 20) {
             bl_level = 100;
@@ -455,6 +462,17 @@ async fn wifi_status_task(stack: Stack<'static>) {
         }
     }
 }
+#[embassy_executor::task]
+
+async fn update_rtc_with_ntp(rtc: Rc<RTCUtils>) {
+    loop {
+        let now = await_now().await;
+        info!("Update time ! {}", now);
+
+        rtc.set_date_time(now.to_utc()).await;
+        Timer::after(Duration::from_secs(10)).await;
+    }
+}
 
 #[embassy_executor::task]
 async fn run_ntp_client(ntp_client: NtpClient<'static>) {
@@ -467,7 +485,7 @@ async fn update_timer(rtc: Rc<RTCUtils>) {
     let mut last_value = 0;
     let mut ticker = Ticker::every(Duration::from_millis(1000));
     loop {
-        let current_time = rtc.get_date_time().await;
+        let current_time = rtc.get_date_time().await.with_timezone(&Paris);
 
         let actual = current_time.second() % 10;
         if (actual != last_value) {

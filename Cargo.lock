@@ -1102,10 +1102,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "ds1307"
+name = "ds323x"
 version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "78bb1e986e66afb6dd3247850add86508e64a6de181bc37e7ba36617260a6b84"
+checksum = "fe0029db3520c604477b3155a860f7091e082df27210d63e9869e25dbd9eb0ca"
 dependencies = [
  "embedded-hal 1.0.0",
  "rtcc",
@@ -1246,15 +1246,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "embedded-dma"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "994f7e5b5cb23521c22304927195f236813053eb9c065dd2226a32ba64695446"
-dependencies = [
- "stable_deref_trait",
-]
-
-[[package]]
 name = "embedded-graphics"
 version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1275,16 +1266,6 @@ checksum = "ba9ecd261f991856250d2207f6d8376946cd9f412a2165d3b75bc87a0bc7a044"
 dependencies = [
  "az",
  "byteorder",
-]
-
-[[package]]
-name = "embedded-graphics-framebuf"
-version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "22354420f68727fa24d1e2741dae1e9a041065e80fb63b35a8d19c647a85be76"
-dependencies = [
- "embedded-dma",
- "embedded-graphics",
 ]
 
 [[package]]
@@ -1692,14 +1673,13 @@ dependencies = [
  "chrono",
  "chrono-tz",
  "dotenvy",
- "ds1307",
+ "ds323x",
  "embassy-executor",
  "embassy-futures",
  "embassy-net",
  "embassy-sync",
  "embassy-time",
  "embedded-graphics",
- "embedded-graphics-framebuf",
  "embedded-hal-bus",
  "embedded-io",
  "env_logger",
@@ -1719,6 +1699,7 @@ dependencies = [
  "smoltcp",
  "sntpc",
  "static_cell",
+ "zeno",
 ]
 
 [[package]]
@@ -6161,6 +6142,12 @@ dependencies = [
  "static_assertions",
  "zvariant",
 ]
+
+[[package]]
+name = "zeno"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cc0de2315dc13d00e5df3cd6b8d2124a6eaec6a2d4b6a1c5f37b7efad17fcc17"
 
 [[package]]
 name = "zerocopy"

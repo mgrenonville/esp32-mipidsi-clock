@@ -43,10 +43,14 @@ chrono-tz = { version = "0.5", default-features = false }
 
 
 sntpc = { version = "0.5.2",default-features = false,  features = ["embassy-socket", "log"] }
-ds1307 = "0.6.0"
+# ds1307 = "0.6.0"
+ds323x = "0.6.0"
 embedded-graphics = "0.8.0"
-embedded-graphics-framebuf = "0.5.0"
 mipidsi = "0.9.0"
+
+
+zeno  = "0.3.2"
+
 
 slint-generated = { path = "./slint_generated" }
 slint = { git = "https://github.com/slint-ui/slint", default-features = false, features = [
