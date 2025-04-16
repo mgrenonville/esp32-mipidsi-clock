@@ -49,7 +49,10 @@ embedded-graphics = "0.8.0"
 mipidsi = "0.9.0"
 
 
-zeno  = "0.3.2"
+# zeno  = "0.3.2"
+tiny-skia = {version="0.11.4",default-features = false, features = ["no-std-float"] }
+micromath = "2.1.0"
+
 
 
 slint-generated = { path = "./slint_generated" }

@@ -13,3 +13,4 @@ pub mod ntp;
 pub mod slintplatform;
 #[cfg(feature = "mcu")]
 pub mod wifi;
+pub mod moon;

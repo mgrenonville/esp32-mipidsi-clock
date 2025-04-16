@@ -12,10 +12,13 @@ use embassy_sync::{
 use embassy_time::{Duration, Instant, Timer};
 use embedded_graphics::prelude::Point;
 use log::{debug, error};
-use slint::{ComponentHandle, ToSharedString};
-use slint_generated::{Globals, MonsterEnv, Recipe, TimeOfDay, WifiState};
+use slint::{ComponentHandle, Image, Rgb8Pixel, Rgba8Pixel, SharedPixelBuffer, ToSharedString};
+use slint_generated::{Globals, MonsterEnv, Recipe, Resources, TimeOfDay, WifiState};
 
 use log::warn;
+use tiny_skia::{Color, FillRule, Mask, Paint, PathBuilder, Pixmap, Transform};
+
+use crate::moon::{self, Moon};
 
 #[cfg(feature = "mcu")]
 use crate::board::Board;
@@ -26,7 +29,7 @@ pub enum Action {
     HardwareUserBtnPressed(bool),
     TouchscreenToggleBtn(bool),
     WifiStateUpdate(WifiState),
-    TimeOfDayUpdate(TimeOfDay),
+    TimeOfDayUpdate(TimeOfDay, Moon),
     UpdateTime(DateTime<Tz>),
     ShowMonster(bool, Point, MonsterEnv),
 }
@@ -60,6 +63,8 @@ pub trait Hardware {
 }
 #[cfg(feature = "mcu")]
 impl Hardware for Board {}
+
+pub const MOON_SIZE: usize = 34;
 
 pub struct Controller<'a, Hardware, WallClock> {
     main_window: &'a Recipe,
@@ -99,6 +104,8 @@ where
 
     pub async fn process_action(&mut self, action: Action) -> Result<(), ()> {
         let globals = self.main_window.global::<Globals>();
+        let resources = self.main_window.global::<Resources>();
+
         log::info!("process_action: {:?}", action);
 
         // Refresh has to be asked BEFORE updating
@@ -137,8 +144,76 @@ where
                     env,
                 });
             }
-            Action::TimeOfDayUpdate(tod) => {
+            Action::TimeOfDayUpdate(tod, moon) => {
                 globals.set_time_of_day(tod);
+                let img = resources.get_test();
+                img.to_rgba8().unwrap();
+
+                let mut shadow_paint = Paint::default();
+                shadow_paint.set_color_rgba8(2, 4, 38, 255);
+                shadow_paint.anti_alias = false;
+
+                let mut full_moon_paint = Paint::default();
+                full_moon_paint.set_color_rgba8(255, 246, 153, 255);
+                full_moon_paint.anti_alias = true;
+
+                let mut pixmap = Pixmap::new(34, 34).unwrap();
+                
+                let mut computed=(34.0 * ((moon.illumination))) ;
+                if (moon.phase > 0.5) {
+                    computed = computed + 34. / 2. as f32
+                } else {
+                    computed =  34. / 2. - computed as f32
+                }
+                let shadow = PathBuilder::from_circle(
+                    computed,
+                    (34.0 / 2.0) as f32,
+                    (34 / 2) as f32,
+                )
+                .unwrap();
+
+                log::info!("phase: {}, computed: {}, emoji: {}", moon.phase, computed, moon.phase_emoji());
+            
+
+                let full_moon = PathBuilder::from_circle(
+                    (34.0 / 2.0) as f32,
+                    (34.0 / 2.0) as f32,
+                    (34 / 2) as f32,
+                )
+                .unwrap();
+
+                let mut mask = Mask::new(34, 34).unwrap();
+                mask.fill_path(
+                    &shadow,
+                    FillRule::Winding,
+                    true,
+                    Transform::from_rotate_at(-25.0, 34. / 2., 34. / 2.),
+                );
+                mask.invert();
+
+                // let t = Transform::from_rotate(-20.0);
+                pixmap.fill(Color::from_rgba8(255, 0, 0, 0));
+                pixmap.fill_path(
+                    &full_moon,
+                    &full_moon_paint,
+                    FillRule::Winding,
+                    Transform::identity(),
+                    Some(&mask),
+                );
+                // pixmap.fill_path(
+                //     &shadow,
+                //     &shadow_paint,
+                //     FillRule::Winding,
+                //     Transform::identity(),
+                //     None,
+                // );
+
+                let i = SharedPixelBuffer::<Rgba8Pixel>::clone_from_slice(
+                    pixmap.data_mut(),
+                    MOON_SIZE.try_into().unwrap(),
+                    MOON_SIZE.try_into().unwrap(),
+                );
+                globals.set_moon(Image::from_rgba8(i));
             }
             Action::MultipleActions(actions) => {
                 for a in actions.iter() {

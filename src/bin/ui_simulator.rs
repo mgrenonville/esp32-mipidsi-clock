@@ -12,7 +12,9 @@
 //
 // To run: `cargo run --bin ui_simulator --release --features=simulator`
 
+use std::ops::Add;
 use std::{
+    alloc::System,
     cell::RefCell,
     rc::Rc,
     slice,
@@ -21,7 +23,7 @@ use std::{
     vec::Vec,
 };
 
-use chrono::{DateTime, Local, Utc};
+use chrono::{DateTime, Days, Local, Utc};
 use chrono_tz::Europe::Paris;
 use embassy_executor::{Executor, Spawner};
 use embassy_sync::blocking_mutex::{CriticalSectionMutex, Mutex};
@@ -29,6 +31,7 @@ use embassy_time::{Duration, Instant, Ticker, Timer};
 use embedded_graphics::prelude::Point;
 use esp32_mipidsi_clock::{
     controller::{self, Action, Controller, Hardware, WallClock},
+    moon::Moon,
     slintplatform::EspEmbassyBackend,
 };
 use log::*;
@@ -56,6 +59,9 @@ static POOL: StaticCell<Pool<Vec<TargetPixelType>>> = StaticCell::new();
 
 static POSITION: CriticalSectionMutex<RefCell<Point>> =
     CriticalSectionMutex::new(RefCell::new(Point { x: 0, y: 0 }));
+
+static ILLUMINATION: CriticalSectionMutex<RefCell<Option<DateTime<Utc>>>> =
+    CriticalSectionMutex::new(RefCell::new(None));
 
 struct HardwareSim {}
 impl Hardware for HardwareSim {}
@@ -145,34 +151,53 @@ fn sdl2_render_loop(
                 Event::KeyDown {
                     keycode: Some(Keycode::F1),
                     ..
-                } => controller::send_action(Action::WifiStateUpdate(
-                    slint_generated::WifiState::STARTING,
-                )),
+                } => {
+                    controller::send_action(Action::WifiStateUpdate(
+                        slint_generated::WifiState::STARTING,
+                    ));
+                    
+                }
 
                 Event::KeyDown {
                     keycode: Some(Keycode::F5),
                     ..
                 } => controller::send_action(Action::TimeOfDayUpdate(
                     slint_generated::TimeOfDay::DAY,
+                    Moon::new(Local::now().into()),
                 )),
                 Event::KeyDown {
                     keycode: Some(Keycode::F6),
                     ..
                 } => controller::send_action(Action::TimeOfDayUpdate(
                     slint_generated::TimeOfDay::NIGHT,
+                    Moon::new(
+                        ILLUMINATION
+                            .lock(|r| {
+                                r.replace_with(|mopt| {
+                                    mopt.map(|m| m.add(Days::new(1)))
+                                })
+                            })
+                            .unwrap(),
+                    ),
                 )),
 
                 Event::KeyDown {
                     keycode: Some(Keycode::F2),
                     ..
-                } => controller::send_action(Action::WifiStateUpdate(
-                    slint_generated::WifiState::LINKUP,
-                )),
+                } => {
+                    controller::send_action(Action::WifiStateUpdate(
+                        slint_generated::WifiState::LINKUP,
+                    ));
+                    ILLUMINATION.lock(|r| r.replace(Some(Local::now().to_utc())));
+                }
                 Event::KeyDown {
                     keycode: Some(Keycode::F3),
                     ..
                 } => {
-                    controller::send_action(Action::WifiStateUpdate(slint_generated::WifiState::OK))
+                    controller::send_action(Action::WifiStateUpdate(
+                        slint_generated::WifiState::OK,
+                    ));
+                    
                 }
                 Event::KeyUp {
                     keycode: Some(Keycode::LSHIFT),

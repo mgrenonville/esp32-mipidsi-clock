@@ -33,9 +33,24 @@ export component Monster inherits Rectangle {
 
 }
 
+export component Moon inherits Rectangle {
+    width: 34px;
+    height: 34px;
+    // border-radius: root.width / 2;
+    in property <image> moon;
+
+    // background: #fff699;
+
+    img := Image {
+        source: moon;
+    }
+}
+
 export component World inherits Rectangle {
     in property <TimeOfDay> time_of_day;
     in property <MonsterPosition> position;
+    in property <image> moon;
+
 
     in property <image> monster;
 
@@ -52,6 +67,7 @@ export component World inherits Rectangle {
 
     ]
 
+    
     sky := Image {
         states [
             night when time_of_day == TimeOfDay.EVENING || time_of_day == TimeOfDay.NIGHT: {
@@ -62,6 +78,8 @@ export component World inherits Rectangle {
             }
         ]
     }
+
+
 
     bg := Image {
         states [
@@ -74,6 +92,12 @@ export component World inherits Rectangle {
         ]
     }
 
+
+    Moon {
+        moon: moon;
+        x: 70px;
+        y: -0px;
+    }
 
     monster_in_house := Monster {
         img_source: monster;

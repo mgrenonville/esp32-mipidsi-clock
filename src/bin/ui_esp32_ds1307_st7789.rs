@@ -20,6 +20,7 @@ use embedded_graphics::prelude::Point;
 use embedded_graphics::{draw_target::DrawTarget, pixelcolor::Rgb565, prelude::RgbColor};
 use embedded_hal_bus::spi::ExclusiveDevice;
 use esp32_mipidsi_clock::controller::WallClock;
+use esp32_mipidsi_clock::moon::Moon;
 use esp32_mipidsi_clock::ntp::{await_now, now, NtpClient};
 use esp32_mipidsi_clock::wifi::EspEmbassyWifiController;
 use esp_hal::{
@@ -500,10 +501,11 @@ async fn update_timer(rtc: Rc<RTCUtils>) {
             point = Point { x: 195, y: 143 };
             env = slint_generated::MonsterEnv::HOUSE;
         }
+        let moon = Moon::new(current_time.to_utc());
         controller::send_action(Action::MultipleActions(vec![
             Action::ShowMonster(visible, point, env),
             Action::UpdateTime(current_time),
-            Action::TimeOfDayUpdate(tod),
+            Action::TimeOfDayUpdate(tod, moon),
         ]));
 
         log::debug!(

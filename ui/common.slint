@@ -18,9 +18,16 @@ export global Globals {
     in property <WifiState> wifi_state;
 
     in property <TimeOfDay> time_of_day;
+    in property <image> moon;
 
     in-out property <string> name;
     in property <MonsterPosition> monster_position;
+    in property <image> test;
+}
+
+export global Resources {
+    out property <image> house: @image-url("./img/layers/0-house.png");
+    out property <image> night_mask: @image-url("./img/layers/aaa-night-mask.png");
 }
 
 

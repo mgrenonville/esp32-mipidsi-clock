@@ -1,9 +1,9 @@
 import { HorizontalBox, VerticalBox, Button, Spinner } from "std-widgets.slint";
 import "assets/editundo.ttf";
 
-import { Globals, WifiState } from "common.slint";
+import { Globals, WifiState, Resources } from "common.slint";
 import { World , Monster} from "background.slint";
-export { Globals }
+export { Globals, Resources }
 
 export component Recipe inherits Window {
     default-font-family: "Edit Undo BRK";
@@ -15,6 +15,7 @@ export component Recipe inherits Window {
         monster: @image-url("img/anims/c-1-open.png");
         position: Globals.monster_position;
         time_of_day: Globals.time_of_day;
+        moon: Globals.moon;
     }
 
     VerticalBox {
