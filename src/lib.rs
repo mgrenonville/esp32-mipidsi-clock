@@ -8,10 +8,10 @@ pub mod board;
 pub mod boards;
 
 pub mod controller;
+pub mod moon;
 #[cfg(feature = "mcu")]
 pub mod ntp;
+pub mod sky;
 pub mod slintplatform;
 #[cfg(feature = "mcu")]
 pub mod wifi;
-pub mod moon;
-pub mod sky;

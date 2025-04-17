@@ -47,7 +47,7 @@ use slint::{
     },
     ComponentHandle,
 };
-use slint_generated::Recipe;
+use slint_generated::{Recipe, TimeOfDay};
 use static_cell::StaticCell;
 
 pub type TargetPixelType = Rgb565Pixel;
@@ -64,8 +64,8 @@ static POSITION: CriticalSectionMutex<RefCell<Point>> =
 static ILLUMINATION: CriticalSectionMutex<RefCell<Option<DateTime<Utc>>>> =
     CriticalSectionMutex::new(RefCell::new(None));
 
-static MINUTES_OFFSET: CriticalSectionMutex<RefCell<u64>> =
-    CriticalSectionMutex::new(RefCell::new(0));
+static MINUTES_OFFSET: CriticalSectionMutex<RefCell<i64>> =
+    CriticalSectionMutex::new(RefCell::new(-24 * 60 * 30 * 4));
 
 struct HardwareSim {}
 impl Hardware for HardwareSim {}
@@ -200,21 +200,29 @@ fn sdl2_render_loop(
                 Event::KeyDown {
                     keycode: Some(Keycode::F10),
                     ..
-                } => {MINUTES_OFFSET.lock(|c| c.replace_with(|&mut x| x + 1));},
+                } => {
+                    MINUTES_OFFSET.lock(|c| c.replace_with(|&mut x| x + 1));
+                }
 
                 Event::KeyDown {
                     keycode: Some(Keycode::F9),
                     ..
-                } => {MINUTES_OFFSET.lock(|c| c.replace_with(|&mut x| x - 1));},
+                } => {
+                    MINUTES_OFFSET.lock(|c| c.replace_with(|&mut x| x - 1));
+                }
                 Event::KeyDown {
                     keycode: Some(Keycode::F8),
                     ..
-                } => {MINUTES_OFFSET.lock(|c| c.replace_with(|&mut x| x - 60));},
+                } => {
+                    MINUTES_OFFSET.lock(|c| c.replace_with(|&mut x| x - 24 * 60));
+                }
 
                 Event::KeyDown {
                     keycode: Some(Keycode::F11),
                     ..
-                } => {MINUTES_OFFSET.lock(|c| c.replace_with(|&mut x| x + 60));},
+                } => {
+                    MINUTES_OFFSET.lock(|c| c.replace_with(|&mut x| x + 24 * 60));
+                }
 
                 Event::KeyUp {
                     keycode: Some(Keycode::LSHIFT),
@@ -385,30 +393,45 @@ use chrono::Timelike;
 async fn update_timer() {
     let mut visible = true;
     let mut last_value = 0;
-    let mut ticker = Ticker::every(Duration::from_millis(1));
+    let mut ticker = Ticker::every(Duration::from_millis(10));
     let mut x = 0;
     loop {
-        x = x+10;
-        let current_time = DateTime::from_timestamp(Local::now().timestamp() +x , 0).unwrap().add(TimeDelta::minutes(
-            MINUTES_OFFSET.lock(|v| v.clone().into_inner()) as i64,
-        ));
+        x = x + 1;
+        let current_time = DateTime::from_timestamp(Local::now().timestamp(), 0)
+            .unwrap()
+            .add(TimeDelta::minutes(
+                MINUTES_OFFSET.lock(|v| v.clone().into_inner()) as i64,
+            ));
 
         let actual = current_time.second() % 10;
         if (actual != last_value) {
             visible = !visible;
         }
 
-        let position = POSITION.lock(|r| r.as_ptr());
+        let mut point = Point { x: 125, y: 188 };
+        let mut env = slint_generated::MonsterEnv::OUTSIDE;
+
+        let local_time = current_time.with_timezone(&Paris);
+        if (local_time.hour() >= 20 || local_time.hour() < 8) {
+            point = Point { x: 195, y: 143 };
+            env = slint_generated::MonsterEnv::HOUSE;
+            if (local_time.hour() >= 21 || local_time.hour() < 7) {
+                env = slint_generated::MonsterEnv::SLEEPING;
+            }
+        }
+
+        // let position = POSITION.lock(|r| r.as_ptr());
         last_value = actual;
         controller::send_action(Action::MultipleActions(vec![
-            Action::ShowMonster(
-                visible,
-                Point {
-                    x: unsafe { (*position).x },
-                    y: unsafe { (*position).y },
-                },
-                slint_generated::MonsterEnv::OUTSIDE,
-            ),
+            // Action::ShowMonster(
+            //     visible,
+            //     Point {
+            //         x: unsafe { (*position).x },
+            //         y: unsafe { (*position).y },
+            //     },
+            //     slint_generated::MonsterEnv::OUTSIDE,
+            // ),
+            Action::ShowMonster(visible),
             Action::UpdateTime(current_time.with_timezone(&Paris)),
         ]));
 

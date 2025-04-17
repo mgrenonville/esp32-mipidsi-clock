@@ -3,7 +3,7 @@
 
 use alloc::{boxed::Box, rc::Rc, vec::Vec};
 use chrono::{DateTime, Timelike, Utc};
-use chrono_tz::Tz;
+use chrono_tz::{Europe::Paris, Tz};
 use embassy_sync::{
     blocking_mutex::raw::CriticalSectionRawMutex, channel::Channel, signal::Signal,
     waitqueue::WakerRegistration,
@@ -30,7 +30,7 @@ pub enum Action {
     WifiStateUpdate(WifiState),
     TimeOfDayUpdate(TimeOfDay, Moon),
     UpdateTime(DateTime<Tz>),
-    ShowMonster(bool, Point, MonsterEnv),
+    ShowMonster(bool),
 }
 
 #[cfg(feature = "mcu")]
@@ -133,23 +133,35 @@ where
             Action::WifiStateUpdate(wifi_state) => globals.set_wifi_state(wifi_state),
             Action::UpdateTime(current_time) => {
                 globals.set_name(current_time.format("%H:%M").to_shared_string());
-                let (tod, night_factor, brush) = crate::sky::get_slint_gradient(current_time.to_utc());
+                let (tod, night_factor, brush) =
+                    crate::sky::get_slint_gradient(current_time.to_utc());
                 globals.set_night_factor(night_factor);
                 globals.set_time_of_day(tod);
                 let buff = Moon::new(current_time.to_utc()).build_image();
 
                 globals.set_moon(Image::from_rgba8(buff));
 
+                let mut point = Point { x: 125, y: 188 }; // outside
+                let mut env = slint_generated::MonsterEnv::OUTSIDE;
+                let local_time = current_time.with_timezone(&Paris);
+                if ((local_time.hour() >= 20 || local_time.hour() < 8) || night_factor > 0.25) {
+                    point = Point { x: 195, y: 143 }; // in house
+                    env = slint_generated::MonsterEnv::HOUSE;
+                }
 
-                globals.set_sky_brush(Brush::LinearGradient(brush))
-            }
-            Action::ShowMonster(monster, point, env) => {
+                if (local_time.hour() >= 21 || local_time.hour() < 7) {
+                    env = slint_generated::MonsterEnv::SLEEPING;
+                }
+
                 globals.set_monster_position(slint_generated::MonsterPosition {
-                    visible: monster,
+                    env: env,
                     x: point.x,
                     y: point.y,
-                    env,
                 });
+                globals.set_sky_brush(Brush::LinearGradient(brush))
+            }
+            Action::ShowMonster(monster) => {
+                globals.set_monster_visibility(monster);
             }
             Action::TimeOfDayUpdate(tod, moon) => {
                 globals.set_time_of_day(tod);
@@ -209,7 +221,6 @@ where
                     MOON_SIZE.try_into().unwrap(),
                 );
                 globals.set_moon(Image::from_rgba8(i));
-                
             }
             Action::MultipleActions(actions) => {
                 for a in actions.iter() {

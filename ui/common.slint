@@ -2,15 +2,15 @@ export enum WifiState {STARTING, LINK_UP, OK}
 export enum TimeOfDay {DAY, TWILIGHT, NIGHT}
 
 
-export enum MonsterEnv {HOUSE, BALCONY, OUTSIDE}
+export enum MonsterEnv {HOUSE, BALCONY, OUTSIDE, SLEEPING}
 
 
 
 export struct MonsterPosition{
     x: int,
     y: int, 
-    visible: bool,
-    env: MonsterEnv}
+    env: MonsterEnv
+}
 
 export global Globals {
     in-out property <int> counter: 0;
@@ -22,6 +22,7 @@ export global Globals {
 
     in-out property <string> name;
     in property <MonsterPosition> monster_position;
+    in property <bool> monster_visibility;
     in property <brush> sky_brush;
 
 }

@@ -5,8 +5,10 @@ import { TimeOfDay, MonsterEnv, MonsterPosition } from "common.slint";
 component DayAndNightImage inherits Rectangle {
     in property <image> day_image;
     in property <image> night_image;
+    in property <image> no_light_image;
     in property <TimeOfDay> time_of_day;
     in property <float> night_factor;
+    in property <bool> lighted;
 
     day := Image {
         source: day_image;
@@ -19,15 +21,13 @@ component DayAndNightImage inherits Rectangle {
 
     night_layer := Image {
         source: night_image;
+        opacity: night_factor;
         states [
-            night when time_of_day == TimeOfDay.NIGHT: {
-                opacity: 1.0;
+            lighted when lighted: {
+                source: night_image;
             }
-            twiligth when time_of_day == TimeOfDay.TWILIGHT: {
-                opacity: night_factor;
-            }
-            day when time_of_day == TimeOfDay.DAY: {
-                opacity: 0.0;
+            not_lighted when !lighted: {
+                source: no_light_image;
             }
         ]
     }
@@ -82,12 +82,17 @@ export component World inherits Rectangle {
     in property <TimeOfDay> time_of_day;
     in property <float> night_factor;
     in property <MonsterPosition> position;
+    in property <bool> monster_visibility;
     in property <image> moon;
     in property <brush> sky_brush;
 
     in property <image> monster;
 
     states [
+        sleeping when position.env == MonsterEnv.SLEEPING: {
+            monster_in_house.visible: false;
+            monster_outside.visible: false;
+        }
         house when position.env == MonsterEnv.HOUSE: {
             monster_in_house.visible: true;
             monster_outside.visible: false;
@@ -104,13 +109,21 @@ export component World inherits Rectangle {
         width: 100%;
         // background: @linear-gradient(90deg, #b54910.darker(angle / 100)  10%,  #214050.darker(angle / 100) 90%);
         background: sky_brush;
+        
+    }
+
+    stars := Image {
+        source:  @image-url("./img/layers/99-sky-night.png");
+        opacity: night_factor;
     }
 
     bg := DayAndNightImage {
         day_image: @image-url("./img/layers/98-background.png");
         night_factor: night_factor;
         night_image: @image-url("./img/layers/98-background-night.png");
+        no_light_image: @image-url("./img/layers/98-background-no-light.png");
         time_of_day: time_of_day;
+        lighted: position.env == MonsterEnv.HOUSE;
     }
 
     Moon {
@@ -130,7 +143,7 @@ export component World inherits Rectangle {
 
     monster_in_house := Monster {
         img_source: monster;
-        visible_on_screen: position.visible;
+        visible_on_screen: monster_visibility;
         x: position.x * 1px;
         y: position.y * 1px;
     }
@@ -139,19 +152,23 @@ export component World inherits Rectangle {
         day_image: @image-url("./img/layers/0-house.png");
         night_factor: night_factor;
         night_image: @image-url("./img/layers/0-house-night.png");
+        no_light_image: @image-url("./img/layers/0-house-no-light.png");
         time_of_day: time_of_day;
+        lighted: position.env == MonsterEnv.HOUSE;
     }
 
     window := DayAndNightImage {
         day_image: @image-url("./img/layers/1-windows.png");
         night_factor: night_factor;
         night_image: @image-url("./img/layers/1-windows-night.png");
+        no_light_image: @image-url("./img/layers/1-windows-no-light.png");
         time_of_day: time_of_day;
+        lighted: position.env == MonsterEnv.HOUSE;
     }
 
     monster_outside := Monster {
         img_source: monster;
-        visible_on_screen: position.visible;
+        visible_on_screen: monster_visibility;
         x: position.x * 1px;
         y: position.y * 1px;
     }
@@ -160,6 +177,8 @@ export component World inherits Rectangle {
         day_image: @image-url("./img/layers/2-fence.png");
         night_factor: night_factor;
         night_image: @image-url("./img/layers/2-fence-night.png");
+        no_light_image: @image-url("./img/layers/2-fence-no-light.png");
         time_of_day: time_of_day;
+        lighted: position.env == MonsterEnv.HOUSE;
     }
 }

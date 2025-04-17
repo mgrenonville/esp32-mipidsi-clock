@@ -494,19 +494,11 @@ async fn update_timer(rtc: Rc<RTCUtils>) {
             visible = !visible;
         }
         last_value = actual;
-        let mut tod = TimeOfDay::DAY;
-        let mut point = Point { x: 125, y: 188 };
-        let mut env = slint_generated::MonsterEnv::OUTSIDE;
-        if (current_time.hour() >= 20 || current_time.hour() < 8) {
-            tod = TimeOfDay::NIGHT;
-            point = Point { x: 195, y: 143 };
-            env = slint_generated::MonsterEnv::HOUSE;
-        }
-        let moon = Moon::new(current_time.to_utc());
+
         controller::send_action(Action::MultipleActions(vec![
-            Action::ShowMonster(visible, point, env),
+            Action::ShowMonster(visible),
             Action::UpdateTime(current_time),
-            Action::TimeOfDayUpdate(tod, moon),
+            // Action::TimeOfDayUpdate(tod, moon),
         ]));
 
         log::debug!(
