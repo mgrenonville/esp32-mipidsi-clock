@@ -415,17 +415,19 @@ pub fn get_slint_gradient(
     };
 
     let corrected_angle = if (pos.azimuth > 180.0) {
-        angle
+        270.0 + angle
     } else {
-        180.0 - angle
+        90.0 + angle
     };
 
     let night_factor = ((angle - (8.0)) / (-8.0 - 8.0)).clamp(0.0, 1.0);
     log::info!(
-        "corrected angle: {}, night_factor: {}, tod: {}",
+        "corrected angle: {}, night_factor: {}, tod: {}, start: {}, end: {}",
         corrected_angle,
         night_factor * 100.0,
-        current_sky.moment
+        current_sky.moment,
+        start_color,
+        end_color
     );
 
     (
@@ -436,11 +438,11 @@ pub fn get_slint_gradient(
             [
                 GradientStop {
                     color: start_color,
-                    position: 0.1,
+                    position: 0.3,
                 },
                 GradientStop {
                     color: end_color,
-                    position: 0.9,
+                    position: 0.7,
                 },
             ],
         ),

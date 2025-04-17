@@ -104,7 +104,7 @@ export component World inherits Rectangle {
     ]
 
     sky := Rectangle {
-        border-radius: root.width / 2;
+        // border radius doesn't works with gradients
         height: 100%;
         width: 100%;
         // background: @linear-gradient(90deg, #b54910.darker(angle / 100)  10%,  #214050.darker(angle / 100) 90%);
