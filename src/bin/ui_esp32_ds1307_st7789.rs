@@ -271,6 +271,7 @@ async fn main(spawner: Spawner) {
 
     let ntp_client = NtpClient::new(stack);
 
+    let _ = spawner.spawn(print_stats()).unwrap();
     let _ = spawner.spawn(fade_screen(bl, rtc_rc.clone())).unwrap();
     let _ = spawner.spawn(run_ntp_client(ntp_client));
     let _ = spawner.spawn(update_rtc_with_ntp(rtc_rc.clone()));

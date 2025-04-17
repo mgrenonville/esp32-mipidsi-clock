@@ -691,6 +691,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "color-hex"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ecdffb913a326b6c642290a0d0ec8e8d6597291acdc07cc4c9cb4b3635d44cf9"
+
+[[package]]
 name = "color_quant"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1672,6 +1678,7 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "chrono-tz",
+ "color-hex",
  "dotenvy",
  "ds323x",
  "embassy-executor",
@@ -1690,6 +1697,7 @@ dependencies = [
  "esp-println",
  "esp-wifi",
  "heapless",
+ "i-slint-core",
  "log",
  "micromath",
  "mipidsi",
@@ -1699,6 +1707,7 @@ dependencies = [
  "slint-generated",
  "smoltcp",
  "sntpc",
+ "spa",
  "static_cell",
  "tiny-skia",
 ]
@@ -4710,6 +4719,15 @@ dependencies = [
  "web-sys",
  "windows-sys 0.59.0",
  "x11rb",
+]
+
+[[package]]
+name = "spa"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b23404f558ad79b3699cf61d6f2d65a64c1bd63249c1ef70321fec26933abd36"
+dependencies = [
+ "chrono",
 ]
 
 [[package]]

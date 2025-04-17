@@ -14,3 +14,4 @@ pub mod slintplatform;
 #[cfg(feature = "mcu")]
 pub mod wifi;
 pub mod moon;
+pub mod sky;

@@ -2,9 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 use alloc::{boxed::Box, rc::Rc, vec::Vec};
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Timelike, Utc};
 use chrono_tz::Tz;
-use embassy_futures::join::join_array;
 use embassy_sync::{
     blocking_mutex::raw::CriticalSectionRawMutex, channel::Channel, signal::Signal,
     waitqueue::WakerRegistration,
@@ -12,13 +11,13 @@ use embassy_sync::{
 use embassy_time::{Duration, Instant, Timer};
 use embedded_graphics::prelude::Point;
 use log::{debug, error};
-use slint::{ComponentHandle, Image, Rgb8Pixel, Rgba8Pixel, SharedPixelBuffer, ToSharedString};
-use slint_generated::{Globals, MonsterEnv, Recipe, Resources, TimeOfDay, WifiState};
+use slint::{Brush, ComponentHandle, Image, Rgba8Pixel, SharedPixelBuffer, ToSharedString};
+use slint_generated::{Globals, MonsterEnv, Recipe, TimeOfDay, WifiState};
 
 use log::warn;
 use tiny_skia::{Color, FillRule, Mask, Paint, PathBuilder, Pixmap, Transform};
 
-use crate::moon::{self, Moon};
+use crate::moon::Moon;
 
 #[cfg(feature = "mcu")]
 use crate::board::Board;
@@ -104,7 +103,6 @@ where
 
     pub async fn process_action(&mut self, action: Action) -> Result<(), ()> {
         let globals = self.main_window.global::<Globals>();
-        let resources = self.main_window.global::<Resources>();
 
         log::info!("process_action: {:?}", action);
 
@@ -134,7 +132,16 @@ where
             }
             Action::WifiStateUpdate(wifi_state) => globals.set_wifi_state(wifi_state),
             Action::UpdateTime(current_time) => {
-                globals.set_name(current_time.format("%H:%M").to_shared_string())
+                globals.set_name(current_time.format("%H:%M").to_shared_string());
+                let (tod, night_factor, brush) = crate::sky::get_slint_gradient(current_time.to_utc());
+                globals.set_night_factor(night_factor);
+                globals.set_time_of_day(tod);
+                let buff = Moon::new(current_time.to_utc()).build_image();
+
+                globals.set_moon(Image::from_rgba8(buff));
+
+
+                globals.set_sky_brush(Brush::LinearGradient(brush))
             }
             Action::ShowMonster(monster, point, env) => {
                 globals.set_monster_position(slint_generated::MonsterPosition {
@@ -146,34 +153,29 @@ where
             }
             Action::TimeOfDayUpdate(tod, moon) => {
                 globals.set_time_of_day(tod);
-                let img = resources.get_test();
-                img.to_rgba8().unwrap();
-
-                let mut shadow_paint = Paint::default();
-                shadow_paint.set_color_rgba8(2, 4, 38, 255);
-                shadow_paint.anti_alias = false;
 
                 let mut full_moon_paint = Paint::default();
                 full_moon_paint.set_color_rgba8(255, 246, 153, 255);
                 full_moon_paint.anti_alias = true;
 
                 let mut pixmap = Pixmap::new(34, 34).unwrap();
-                
-                let mut computed=(34.0 * ((moon.illumination))) ;
+
+                let mut computed = (34.0 * (moon.illumination));
                 if (moon.phase > 0.5) {
                     computed = computed + 34. / 2. as f32
                 } else {
-                    computed =  34. / 2. - computed as f32
+                    computed = 34. / 2. - computed as f32
                 }
-                let shadow = PathBuilder::from_circle(
-                    computed,
-                    (34.0 / 2.0) as f32,
-                    (34 / 2) as f32,
-                )
-                .unwrap();
+                let shadow =
+                    PathBuilder::from_circle(computed, (34.0 / 2.0) as f32, (34 / 2) as f32)
+                        .unwrap();
 
-                log::info!("phase: {}, computed: {}, emoji: {}", moon.phase, computed, moon.phase_emoji());
-            
+                log::info!(
+                    "phase: {}, computed: {}, emoji: {}",
+                    moon.phase,
+                    computed,
+                    moon.phase_emoji()
+                );
 
                 let full_moon = PathBuilder::from_circle(
                     (34.0 / 2.0) as f32,
@@ -192,7 +194,7 @@ where
                 mask.invert();
 
                 // let t = Transform::from_rotate(-20.0);
-                pixmap.fill(Color::from_rgba8(255, 0, 0, 0));
+                // pixmap.fill(Color::from_rgba8(2, 4, 38, 255));
                 pixmap.fill_path(
                     &full_moon,
                     &full_moon_paint,
@@ -200,13 +202,6 @@ where
                     Transform::identity(),
                     Some(&mask),
                 );
-                // pixmap.fill_path(
-                //     &shadow,
-                //     &shadow_paint,
-                //     FillRule::Winding,
-                //     Transform::identity(),
-                //     None,
-                // );
 
                 let i = SharedPixelBuffer::<Rgba8Pixel>::clone_from_slice(
                     pixmap.data_mut(),
@@ -214,6 +209,7 @@ where
                     MOON_SIZE.try_into().unwrap(),
                 );
                 globals.set_moon(Image::from_rgba8(i));
+                
             }
             Action::MultipleActions(actions) => {
                 for a in actions.iter() {

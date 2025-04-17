@@ -1,13 +1,13 @@
 import { HorizontalBox, VerticalBox, Button, Spinner } from "std-widgets.slint";
 import "assets/editundo.ttf";
 
-import { Globals, WifiState, Resources } from "common.slint";
+import { Globals, WifiState, TimeOfDay } from "common.slint";
 import { World , Monster} from "background.slint";
-export { Globals, Resources }
+export { Globals }
 
 export component Recipe inherits Window {
     default-font-family: "Edit Undo BRK";
-    always-on-top: false;
+    always-on-top: true;
     height: 240px;
     width: 240px;
 
@@ -16,6 +16,8 @@ export component Recipe inherits Window {
         position: Globals.monster_position;
         time_of_day: Globals.time_of_day;
         moon: Globals.moon;
+        night_factor: Globals.night_factor;
+        sky_brush: Globals.sky_brush;
     }
 
     VerticalBox {
@@ -27,6 +29,17 @@ export component Recipe inherits Window {
                 font-size: 72px;
                 horizontal-alignment: TextHorizontalAlignment.center;
                 text: Globals.name;
+                states [
+                    night when Globals.night_factor > 0%: {
+                        color: hsv(0, 0, 0% + (Globals.night_factor * 100 - 60).clamp(0,40) * 1%);
+                        stroke: black;
+                        stroke-width: 1px;
+                        stroke-style: center;
+                    }
+                    day when Globals.time_of_day == TimeOfDay.DAY: {
+                        color: black;
+                    }
+                ]
             }
         }
     }

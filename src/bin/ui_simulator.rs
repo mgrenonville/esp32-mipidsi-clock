@@ -13,6 +13,7 @@
 // To run: `cargo run --bin ui_simulator --release --features=simulator`
 
 use std::ops::Add;
+use std::time::SystemTime;
 use std::{
     alloc::System,
     cell::RefCell,
@@ -23,7 +24,7 @@ use std::{
     vec::Vec,
 };
 
-use chrono::{DateTime, Days, Local, Utc};
+use chrono::{DateTime, Days, Local, TimeDelta, Utc};
 use chrono_tz::Europe::Paris;
 use embassy_executor::{Executor, Spawner};
 use embassy_sync::blocking_mutex::{CriticalSectionMutex, Mutex};
@@ -62,6 +63,9 @@ static POSITION: CriticalSectionMutex<RefCell<Point>> =
 
 static ILLUMINATION: CriticalSectionMutex<RefCell<Option<DateTime<Utc>>>> =
     CriticalSectionMutex::new(RefCell::new(None));
+
+static MINUTES_OFFSET: CriticalSectionMutex<RefCell<u64>> =
+    CriticalSectionMutex::new(RefCell::new(0));
 
 struct HardwareSim {}
 impl Hardware for HardwareSim {}
@@ -155,7 +159,6 @@ fn sdl2_render_loop(
                     controller::send_action(Action::WifiStateUpdate(
                         slint_generated::WifiState::STARTING,
                     ));
-                    
                 }
 
                 Event::KeyDown {
@@ -172,11 +175,7 @@ fn sdl2_render_loop(
                     slint_generated::TimeOfDay::NIGHT,
                     Moon::new(
                         ILLUMINATION
-                            .lock(|r| {
-                                r.replace_with(|mopt| {
-                                    mopt.map(|m| m.add(Days::new(1)))
-                                })
-                            })
+                            .lock(|r| r.replace_with(|mopt| mopt.map(|m| m.add(Days::new(1)))))
                             .unwrap(),
                     ),
                 )),
@@ -197,8 +196,26 @@ fn sdl2_render_loop(
                     controller::send_action(Action::WifiStateUpdate(
                         slint_generated::WifiState::OK,
                     ));
-                    
                 }
+                Event::KeyDown {
+                    keycode: Some(Keycode::F10),
+                    ..
+                } => {MINUTES_OFFSET.lock(|c| c.replace_with(|&mut x| x + 1));},
+
+                Event::KeyDown {
+                    keycode: Some(Keycode::F9),
+                    ..
+                } => {MINUTES_OFFSET.lock(|c| c.replace_with(|&mut x| x - 1));},
+                Event::KeyDown {
+                    keycode: Some(Keycode::F8),
+                    ..
+                } => {MINUTES_OFFSET.lock(|c| c.replace_with(|&mut x| x - 60));},
+
+                Event::KeyDown {
+                    keycode: Some(Keycode::F11),
+                    ..
+                } => {MINUTES_OFFSET.lock(|c| c.replace_with(|&mut x| x + 60));},
+
                 Event::KeyUp {
                     keycode: Some(Keycode::LSHIFT),
                     ..
@@ -368,9 +385,13 @@ use chrono::Timelike;
 async fn update_timer() {
     let mut visible = true;
     let mut last_value = 0;
-    let mut ticker = Ticker::every(Duration::from_millis(1000));
+    let mut ticker = Ticker::every(Duration::from_millis(1));
+    let mut x = 0;
     loop {
-        let current_time = Local::now();
+        x = x+10;
+        let current_time = DateTime::from_timestamp(Local::now().timestamp() +x , 0).unwrap().add(TimeDelta::minutes(
+            MINUTES_OFFSET.lock(|v| v.clone().into_inner()) as i64,
+        ));
 
         let actual = current_time.second() % 10;
         if (actual != last_value) {

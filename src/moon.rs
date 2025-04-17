@@ -2,6 +2,8 @@ use core::f32::consts::TAU;
 
 use chrono::{DateTime, NaiveDate, NaiveDateTime, Utc};
 use micromath::F32Ext;
+use slint::{Rgba8Pixel, SharedPixelBuffer};
+use tiny_skia::{FillRule, Mask, Paint, PathBuilder, Pixmap, Transform};
 
 /// The period of the lunar orbit in days.
 pub const ORBIT_PERIOD: f32 = 29.53058770576;
@@ -195,5 +197,55 @@ impl Moon {
             }
         }
         "Unknown"
+    }
+
+    pub fn build_image(self) -> SharedPixelBuffer<Rgba8Pixel> {
+        let mut full_moon_paint = Paint::default();
+        full_moon_paint.set_color_rgba8(255, 246, 153, 255);
+        full_moon_paint.anti_alias = true;
+
+        let mut pixmap = Pixmap::new(34, 34).unwrap();
+
+        let mut computed = (34.0 * (self.illumination));
+        if (self.phase > 0.5) {
+            computed = computed + 34. / 2. as f32
+        } else {
+            computed = 34. / 2. - computed as f32
+        }
+        let shadow =
+            PathBuilder::from_circle(computed, (34.0 / 2.0) as f32, (34 / 2) as f32).unwrap();
+
+        log::info!(
+            "phase: {}, computed: {}, emoji: {}",
+            self.phase,
+            computed,
+            self.phase_emoji()
+        );
+
+        let full_moon =
+            PathBuilder::from_circle((34.0 / 2.0) as f32, (34.0 / 2.0) as f32, (34 / 2) as f32)
+                .unwrap();
+
+        let mut mask = Mask::new(34, 34).unwrap();
+        mask.fill_path(
+            &shadow,
+            FillRule::Winding,
+            true,
+            Transform::from_rotate_at(-25.0, 34. / 2., 34. / 2.),
+        );
+        mask.invert();
+
+        // let t = Transform::from_rotate(-20.0);
+        // pixmap.fill(Color::from_rgba8(2, 4, 38, 255));
+        pixmap.fill_path(
+            &full_moon,
+            &full_moon_paint,
+            FillRule::Winding,
+            Transform::identity(),
+            Some(&mask),
+        );
+
+        let i = SharedPixelBuffer::<Rgba8Pixel>::clone_from_slice(pixmap.data_mut(), 34, 34);
+        i
     }
 }
