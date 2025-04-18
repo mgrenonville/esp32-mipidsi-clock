@@ -47,7 +47,7 @@ export component Recipe inherits Window {
 
     Image {
         source: @image-url("img/wifi.png");
-        x: parent.height - self.height - 2px;
+        x: parent.height / 2 - self.height - 1px;
         y: parent.width - self.width - 2px;
         states [
             not_running when Globals.wifi_state == WifiState.STARTING: {
@@ -57,7 +57,7 @@ export component Recipe inherits Window {
                 colorize: darkorange;
             }
             ok when Globals.wifi_state == WifiState.OK: {
-                colorize: darkblue;
+                visible: false;
             }
         ]
     }

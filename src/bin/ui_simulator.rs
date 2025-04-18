@@ -65,7 +65,7 @@ static ILLUMINATION: CriticalSectionMutex<RefCell<Option<DateTime<Utc>>>> =
     CriticalSectionMutex::new(RefCell::new(None));
 
 static MINUTES_OFFSET: CriticalSectionMutex<RefCell<i64>> =
-    CriticalSectionMutex::new(RefCell::new(-24 * 60 * 30 * 4));
+    CriticalSectionMutex::new(RefCell::new(0));
 
 struct HardwareSim {}
 impl Hardware for HardwareSim {}
@@ -214,14 +214,14 @@ fn sdl2_render_loop(
                     keycode: Some(Keycode::F8),
                     ..
                 } => {
-                    MINUTES_OFFSET.lock(|c| c.replace_with(|&mut x| x - 24 * 60));
+                    MINUTES_OFFSET.lock(|c| c.replace_with(|&mut x| x -  60));
                 }
 
                 Event::KeyDown {
                     keycode: Some(Keycode::F11),
                     ..
                 } => {
-                    MINUTES_OFFSET.lock(|c| c.replace_with(|&mut x| x + 24 * 60));
+                    MINUTES_OFFSET.lock(|c| c.replace_with(|&mut x| x +  60));
                 }
 
                 Event::KeyUp {

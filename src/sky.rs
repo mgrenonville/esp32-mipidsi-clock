@@ -105,7 +105,7 @@ impl Display for Sky {
     }
 }
 
-pub const SKY: [Sky; 20] = [
+pub const SKY: [Sky; 22] = [
     Sky {
         gradient: Gradient {
             start: color_from_hex_str!("#0C0A18"),
@@ -224,7 +224,7 @@ pub const SKY: [Sky; 20] = [
         },
         moment: SkyMoment::AFTERNOON,
         start_angle: 80.0,
-        end_angle: 160.0,
+        end_angle: 1.5,
     },
     Sky {
         gradient: Gradient {
@@ -233,8 +233,8 @@ pub const SKY: [Sky; 20] = [
             end: color_from_hex_str!("#236FA7"),
         },
         moment: SkyMoment::SUNSET,
-        start_angle: 8.0,
-        end_angle: 6.0,
+        start_angle: 1.5,
+        end_angle: 1.0,
     },
     Sky {
         //
@@ -244,8 +244,8 @@ pub const SKY: [Sky; 20] = [
             end: color_from_hex_str!("#1F528E"),
         },
         moment: SkyMoment::SUNSET,
-        start_angle: 6.0,
-        end_angle: 4.0,
+        start_angle: 1.0,
+        end_angle: 0.5,
     },
     Sky {
         gradient: Gradient {
@@ -254,8 +254,8 @@ pub const SKY: [Sky; 20] = [
             end: color_from_hex_str!("#2B5A8B"),
         },
         moment: SkyMoment::SUNSET,
-        start_angle: 4.0,
-        end_angle: 2.0,
+        start_angle: 0.0, // sunset
+        end_angle: -4.0,
     },
     Sky {
         gradient: Gradient {
@@ -264,8 +264,8 @@ pub const SKY: [Sky; 20] = [
             end: color_from_hex_str!("#264D75"),
         },
         moment: SkyMoment::SUNSET,
-        start_angle: 2.0,
-        end_angle: 0.0,
+        start_angle: -4.0,
+        end_angle: -4.5,
     },
     Sky {
         gradient: Gradient {
@@ -277,8 +277,8 @@ pub const SKY: [Sky; 20] = [
             end: color_from_hex_str!("#25414F"),
         },
         moment: SkyMoment::DUSK,
-        start_angle: 0.0,
-        end_angle: -2.0,
+        start_angle: -4.5,
+        end_angle: -5.0,
     },
     Sky {
         gradient: Gradient {
@@ -287,8 +287,8 @@ pub const SKY: [Sky; 20] = [
             end: color_from_hex_str!("#071B26"),
         },
         moment: SkyMoment::DUSK,
-        start_angle: -2.0,
-        end_angle: -4.0,
+        start_angle: -5.0,
+        end_angle: -5.5,
     },
     Sky {
         gradient: Gradient {
@@ -297,7 +297,7 @@ pub const SKY: [Sky; 20] = [
             end: color_from_hex_str!("#010A10"),
         },
         moment: SkyMoment::DUSK,
-        start_angle: -4.0,
+        start_angle: -5.5,
         end_angle: -6.0,
     },
     Sky {
@@ -308,7 +308,27 @@ pub const SKY: [Sky; 20] = [
         },
         moment: SkyMoment::DUSK,
         start_angle: -6.0,
+        end_angle: -6.5,
+    },
+    Sky {
+        gradient: Gradient {
+            start: color_from_hex_str!("#0C0A18"),
+            steps: [(color_from_hex_str!("#0C0A18"), 1)],
+            end: color_from_hex_str!("#020111"),
+        },
+        moment: SkyMoment::DUSK,
+        start_angle: -6.5,
         end_angle: -8.0,
+    },
+    Sky {
+        gradient: Gradient {
+            start: color_from_hex_str!("#0C0A18"),
+            steps: [(color_from_hex_str!("#0C0A18"), 1)],
+            end: color_from_hex_str!("#020111"),
+        },
+        moment: SkyMoment::NIGHT,
+        start_angle: -8.0,
+        end_angle: -270.0,
     },
 ];
 
@@ -332,40 +352,33 @@ pub fn get_slint_gradient(
 
     let angle = 90.0 - pos.zenith_angle as f32; // in degrees
 
-    let current_idx = SKY.iter().position(|s| s.start_angle > (angle as f32));
+    let current_idx = if (pos.azimuth > 180.0) {
+        SKY.iter()
+            .rev()
+            .position(|s| {
+                log::info!("testing : {} with {}", s, angle);
+                s.start_angle > (angle as f32)
+            })
+            .unwrap()
+    } else {
+        SKY.iter()
+            .position(|s| s.start_angle > (angle as f32))
+            .unwrap()
+    };
 
+    let idx = if (pos.azimuth > 180.0) {
+        SKY.len() - 1 - current_idx as usize
+    } else {
+        current_idx as usize - 1
+    };
     log::info!(
-        "date: {}, angle: {}, currentidx: {}, pos: {}",
+        "date: {}, angle: {}, currentidx: {}, idx: {}, pos: {}",
         date_time,
         angle,
-        current_idx.unwrap_or(usize::MAX),
+        current_idx,
+        idx,
         pos.azimuth
     );
-
-    let idx = match current_idx {
-        None => {
-            return {
-                (
-                    TimeOfDay::NIGHT,
-                    100.0,
-                    LinearGradientBrush::new(
-                        90.0,
-                        [
-                            GradientStop {
-                                color: SKY[0].gradient.start,
-                                position: 0.1,
-                            },
-                            GradientStop {
-                                color: SKY[0].gradient.end,
-                                position: 0.9,
-                            },
-                        ],
-                    ),
-                )
-            }
-        }
-        Some(idx) => idx - 1,
-    };
 
     let current_sky = SKY[idx];
 
@@ -373,8 +386,22 @@ pub fn get_slint_gradient(
         (angle - current_sky.start_angle) / (current_sky.end_angle - current_sky.start_angle);
 
     let (upper_sky, lower_sky) = if (position_in_interval < 0.5) {
+        log::info!(
+            "angle: {}, position_in_interval: {}, upper_idx: {}, lower_idx: {}",
+            angle,
+            position_in_interval,
+            idx,
+            idx - 1
+        );
         (SKY[idx], SKY[idx - 1])
     } else {
+        log::info!(
+            "angle: {}, position_in_interval: {}, upper_idx: {}, lower_idx: {}",
+            angle,
+            position_in_interval,
+            idx + 1,
+            idx
+        );
         (SKY[idx + 1], SKY[idx])
     };
     log::info!(
@@ -420,7 +447,7 @@ pub fn get_slint_gradient(
         90.0 + angle
     };
 
-    let night_factor = ((angle - (8.0)) / (-8.0 - 8.0)).clamp(0.0, 1.0);
+    let night_factor = ((angle - (0.5)) / (-8.0 - 0.5)).clamp(0.0, 1.0);
     log::info!(
         "corrected angle: {}, night_factor: {}, tod: {}, start: {}, end: {}",
         corrected_angle,
