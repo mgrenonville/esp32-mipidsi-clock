@@ -31,8 +31,8 @@ export component Recipe inherits Window {
                 horizontal-alignment: TextHorizontalAlignment.center;
                 text: Globals.name;
                 states [
-                    night when Globals.night_factor > 0%: {
-                        color: hsv(0, 0, 0% + (Globals.night_factor * 100 - 60).clamp(0,40) * 1%);
+                    night when Globals.night_factor >= 0%: {
+                        color: hsv(0, 0, 0% + (Globals.night_factor * 100 - 0).clamp(0,40) * 1%);
                         stroke: black;
                         stroke-width: 1px;
                         stroke-style: center;
