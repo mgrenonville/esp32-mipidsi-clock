@@ -1689,6 +1689,7 @@ dependencies = [
  "embedded-graphics",
  "embedded-hal-bus",
  "embedded-io",
+ "embedded-io-async",
  "env_logger",
  "esp-alloc",
  "esp-backtrace",

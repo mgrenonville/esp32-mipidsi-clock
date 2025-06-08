@@ -1,4 +1,7 @@
-import { TimeOfDay, MonsterEnv, MonsterPosition } from "common.slint";
+import { TimeOfDay, MonsterEnv, MonsterPosition, Globals } from "common.slint";
+import { SpriteSheet } from "spritesheet.slint";
+
+import { Monster } from "monster.slint";
 
 
 
@@ -33,33 +36,6 @@ component DayAndNightImage inherits Rectangle {
     }
 }
 
-export component Monster inherits Rectangle {
-    in property <bool> visible_on_screen: true;
-    in property <image> img_source;
-    clip: true;
-    height: img.height;
-    width: img.width;
-    states [
-        visible when visible_on_screen: {
-            img.y: 0px;
-        }
-        not_visible when !visible_on_screen: {
-            img.y: img.height;
-        }
-    ]
-    img := Image {
-        horizontal-alignment: ImageHorizontalAlignment.center;
-        vertical-alignment: ImageVerticalAlignment.center;
-        horizontal-tiling: ImageTiling.none;
-        image-rendering: ImageRendering.pixelated;
-        source: img_source;
-        visible: true;
-        animate y {
-            easing: ease-in-out-back;
-            duration: 500ms;
-        }
-    }
-}
 
 export component Moon inherits Rectangle {
     width: 34px;
@@ -109,11 +85,10 @@ export component World inherits Rectangle {
         width: 100%;
         // background: @linear-gradient(90deg, #b54910.darker(angle / 100)  10%,  #214050.darker(angle / 100) 90%);
         background: sky_brush;
-        
     }
 
     stars := Image {
-        source:  @image-url("./img/layers/99-sky-night.png");
+        source: @image-url("./img/layers/99-sky-night.png");
         opacity: night_factor;
     }
 
@@ -181,4 +156,5 @@ export component World inherits Rectangle {
         time_of_day: time_of_day;
         lighted: position.env == MonsterEnv.HOUSE;
     }
+ 
 }

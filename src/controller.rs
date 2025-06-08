@@ -1,7 +1,7 @@
 // Copyright © 2025 David Haig
 // SPDX-License-Identifier: MIT
 
-use alloc::{boxed::Box, rc::Rc, vec::Vec};
+use alloc::{boxed::Box, format, rc::Rc, vec::Vec};
 use chrono::{DateTime, Timelike, Utc};
 use chrono_tz::{Europe::Paris, Tz};
 use embassy_sync::{
@@ -31,6 +31,7 @@ pub enum Action {
     TimeOfDayUpdate(TimeOfDay, Moon),
     UpdateTime(DateTime<Tz>),
     ShowMonster(bool),
+    StartCountDown(DateTime<Tz>, u8),
 }
 
 #[cfg(feature = "mcu")]
@@ -130,9 +131,15 @@ where
                     // self.hardware.green_led_set_high()
                 }
             }
+            Action::StartCountDown(current_time, duration) => {
+                let d = chrono::Duration::seconds(duration.into());
+                let stops_at = current_time.checked_add_signed(d).unwrap();
+                globals.set_countdown(stops_at.timestamp());
+                globals.set_countdown_total_duration(duration.into());
+            }
             Action::WifiStateUpdate(wifi_state) => globals.set_wifi_state(wifi_state),
             Action::UpdateTime(current_time) => {
-                globals.set_name(current_time.format("%H:%M").to_shared_string());
+                globals.set_current_time(current_time.timestamp());
                 let (tod, night_factor, brush) =
                     crate::sky::get_slint_gradient(current_time.to_utc());
                 globals.set_night_factor(night_factor);
@@ -145,7 +152,7 @@ where
                 let mut env = slint_generated::MonsterEnv::OUTSIDE;
                 let local_time = current_time.with_timezone(&Paris);
                 if ((local_time.hour() >= 20 || local_time.hour() < 8) || night_factor > 0.25) {
-                    point = Point { x: 195, y: 143 }; // in house
+                    point = Point { x: 195, y: 138 }; // in house
                     env = slint_generated::MonsterEnv::HOUSE;
                 }
 
@@ -235,7 +242,26 @@ where
     // user initiated action event handlers
     fn set_action_event_handlers(&self) {
         let globals = self.main_window.global::<Globals>();
-        // globals.on_toggle_btn(|on| send_action(Action::TouchscreenToggleBtn(on)));
+        globals.on_format_countdown(|now, stops| {
+            let now = chrono::DateTime::from_timestamp(now, 0).unwrap();
+            let stops_at = chrono::DateTime::from_timestamp(stops, 0).unwrap();
+            let duration = stops_at - now;
+            format!(
+                "{:02}:{:02}",
+                duration.num_seconds() / 60,
+                duration.num_seconds() % 60
+            )
+            .to_shared_string()
+        });
+
+        globals.on_format_time(|now| {
+            let datetime = chrono::DateTime::from_timestamp(now, 0).unwrap();
+            datetime
+                .with_timezone(&Paris)
+                .format("%H:%M")
+                .to_shared_string()
+        });
+        globals.set_countdown(0);
     }
 }
 

@@ -214,20 +214,25 @@ fn sdl2_render_loop(
                     keycode: Some(Keycode::F8),
                     ..
                 } => {
-                    MINUTES_OFFSET.lock(|c| c.replace_with(|&mut x| x -  60));
+                    MINUTES_OFFSET.lock(|c| c.replace_with(|&mut x| x - 60));
                 }
 
                 Event::KeyDown {
                     keycode: Some(Keycode::F11),
                     ..
                 } => {
-                    MINUTES_OFFSET.lock(|c| c.replace_with(|&mut x| x +  60));
+                    MINUTES_OFFSET.lock(|c| c.replace_with(|&mut x| x + 60));
                 }
 
                 Event::KeyUp {
                     keycode: Some(Keycode::LSHIFT),
                     ..
-                } => controller::send_action(Action::HardwareUserBtnPressed(false)),
+                } => controller::send_action(Action::StartCountDown(
+                    DateTime::from_timestamp(Local::now().timestamp(), 0)
+                        .unwrap()
+                        .with_timezone(&Paris),
+                    10,
+                )),
                 Event::MouseButtonDown {
                     timestamp: _timestamp,
                     window_id: _window_id,
@@ -393,7 +398,7 @@ use chrono::Timelike;
 async fn update_timer() {
     let mut visible = true;
     let mut last_value = 0;
-    let mut ticker = Ticker::every(Duration::from_millis(10));
+    let mut ticker = Ticker::every(Duration::from_millis(1000));
     let mut x = 0;
     loop {
         x = x + 1;
@@ -403,7 +408,8 @@ async fn update_timer() {
                 MINUTES_OFFSET.lock(|v| v.clone().into_inner()) as i64,
             ));
 
-        let actual = current_time.second() % 10;
+        let actual = current_time.second() / 10 % 10;
+        log::info!("actual: {}, last_value: {}", actual, last_value);
         if (actual != last_value) {
             visible = !visible;
         }

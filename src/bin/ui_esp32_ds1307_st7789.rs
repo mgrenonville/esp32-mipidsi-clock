@@ -4,23 +4,23 @@
 
 extern crate alloc;
 
-use core::future::IntoFuture;
-
 use alloc::vec;
 use alloc::{boxed::Box, rc::Rc};
 use chrono::Timelike;
 use chrono_tz::Europe::Paris;
 use embassy_executor::Spawner;
 use embassy_futures::select::select;
+
+use embassy_net::tcp::client::{TcpClient, TcpClientState};
+use embassy_net::tcp::TcpSocket;
 use embassy_net::StackResources;
 use embassy_net::{Runner, Stack};
 use embassy_sync::mutex::Mutex;
 use embassy_time::{Duration, Instant, Ticker, Timer};
-use embedded_graphics::prelude::Point;
 use embedded_graphics::{draw_target::DrawTarget, pixelcolor::Rgb565, prelude::RgbColor};
 use embedded_hal_bus::spi::ExclusiveDevice;
+
 use esp32_mipidsi_clock::controller::WallClock;
-use esp32_mipidsi_clock::moon::Moon;
 use esp32_mipidsi_clock::ntp::{await_now, now, NtpClient};
 use esp32_mipidsi_clock::wifi::EspEmbassyWifiController;
 use esp_hal::{
@@ -70,6 +70,7 @@ use esp_wifi::{
     EspWifiController,
 };
 use log::{info, log};
+// use meteofrance_rs::client_no_std::{HttpGetClient, HttpGetResponse};
 use mipidsi::{
     interface::SpiInterface,
     models::GC9A01,
@@ -77,12 +78,23 @@ use mipidsi::{
     options::{ColorInversion, TearingEffect},
     Builder,
 };
+
+// use reqwless::client::{HttpClient, TlsConfig, TlsVerify};
 use slint::{
     platform::software_renderer::{MinimalSoftwareWindow, RepaintBufferType},
     ComponentHandle,
 };
 
 use slint_generated::{Globals, Recipe, TimeOfDay};
+
+// use mountain_mqtt::{
+//     client::{Client, ClientError},
+//     data::quality_of_service::QualityOfService,
+//     packets::connect::Connect,
+//     embedded_hal_async::DelayEmbedded,
+//     embedded_io_async::ConnectionEmbedded,
+//     client::ClientNoQueue;
+// };
 
 macro_rules! singleton {
     ($val:expr, $T:ty) => {{
@@ -99,7 +111,7 @@ const SLINT_FRAME_DURATION_MS: u64 = 1000 / SLINT_TARGET_FPS;
 
 #[esp_hal_embassy::main]
 async fn main(spawner: Spawner) {
-    esp_alloc::heap_allocator!(100 * 1024);
+    esp_alloc::heap_allocator!(130 * 1024);
     esp_println::logger::init_logger_from_env();
 
     let mut config = esp_hal::Config::default();
@@ -270,10 +282,37 @@ async fn main(spawner: Spawner) {
     let _ = spawner.spawn(net_task(runner)).ok();
 
     let ntp_client = NtpClient::new(stack);
+    // let dns_socket = singleton!( DnsSocket::new(stack), DnsSocket<'_>);
 
-    // let _ = spawner.spawn(print_stats()).unwrap();
+    let state: &TcpClientState<1, 4096, 4096> =
+        singleton!( TcpClientState::<1, 4096, 4096>::new(), TcpClientState<1, 4096, 4096>);
+
+    // let mut tcp_client: &TcpClient<'_, 1, 4096, 4096> = singleton!( TcpClient::new(stack, state), TcpClient<'_, 1, 4096, 4096>);
+
+    let mut tls_read_buf: &mut [u8; 16384] = singleton!([0; 16384], [u8; 16384]);
+    let mut tls_write_buf: &mut [u8; 16384] = singleton!([0; 16384], [u8; 16384]);
+    // let config = TlsConfig::new(
+    //     rng.random().into(),
+    //      tls_read_buf,
+    //      tls_write_buf,
+    //     TlsVerify::None,
+    // // );
+    // let mut client = ReqwlessHttpGetClient {
+    //     client: HttpClient::new(&tcp_client, dns_socket),
+    // };
+
+    // let connection = ConnectionEmbedded::new( TcpSocket::new(stack, tls_read_buf, tls_write_buf)) ;
+    // let mut client = ClientNoQueue::new(connection, port, timeout_millis, &mut buf, |message| {
+    //     message_tx
+    //         .try_send((message.topic_name.to_owned(), message.payload.to_vec()))
+    //         .map_err(|_| ClientError::MessageHandlerError)
+    // })
+    // .await;
+
+    let _ = spawner.spawn(print_stats()).unwrap();
     let _ = spawner.spawn(fade_screen(bl, rtc_rc.clone())).unwrap();
     let _ = spawner.spawn(run_ntp_client(ntp_client));
+    // let _ = spawner.spawn(run_weather(client));
     let _ = spawner.spawn(update_rtc_with_ntp(rtc_rc.clone()));
     let _ = spawner.spawn(wifi_status_task(stack));
 
@@ -481,6 +520,18 @@ async fn run_ntp_client(ntp_client: NtpClient<'static>) {
     ntp_client.run().await;
 }
 
+// #[embassy_executor::task]
+// async fn run_weather(client: ReqwlessHttpGetClient<'static>) {
+//     let mut mf = meteofrance_rs::client_no_std::MeteoFranceClient::with_token(client);
+//     let mut ticker = Ticker::every(Duration::from_millis(100000));
+
+//     loop {
+//      let weather = mf.get_forecast_v2(48.871916, 2.33923, None).await.unwrap();
+//         log::info!("weather: {}", weather.properties.daily_forecast.first().unwrap().t_min.unwrap());
+//         ticker.next().await
+//     }
+// }
+
 #[embassy_executor::task]
 async fn update_timer(rtc: Rc<RTCUtils>) {
     let mut visible = true;
@@ -489,7 +540,7 @@ async fn update_timer(rtc: Rc<RTCUtils>) {
     loop {
         let current_time = rtc.get_date_time().await.with_timezone(&Paris);
 
-        let actual = current_time.second() % 10;
+        let actual = current_time.second() / 10 % 10;
         if (actual != last_value) {
             visible = !visible;
         }
@@ -517,3 +568,45 @@ async fn update_timer(rtc: Rc<RTCUtils>) {
         // Timer::after_millis(10).await;
     }
 }
+
+// pub struct ReqwlessHttpGetClient<'a> {
+//     client: HttpClient<'a, TcpClient<'a, 1, 4096, 4096>, DnsSocket<'a>>,
+// }
+
+// impl<'a> HttpGetClient for ReqwlessHttpGetClient<'a> {
+//     async fn get(
+//         &mut self,
+//         url: &alloc::string::String,
+//         read_buff: &mut [u8],
+//     ) -> Result<meteofrance_rs::client_no_std::HttpGetResponse, meteofrance_rs::client_no_std::Error>
+//     {
+//         let mut buffer = [0_u8; 4096];
+//         let http_request_handle = self
+//             .client
+//             .request(reqwless::request::Method::GET, &url)
+//             .await;
+//         let mut req = http_request_handle.map_err(|e| meteofrance_rs::client_no_std::Error {
+//             err: String::from("Request error"),
+//         })?;
+//         let res =
+//             req.send(&mut buffer)
+//                 .await
+//                 .map_err(|e| meteofrance_rs::client_no_std::Error {
+//                     err: String::from("Send error"),
+//                 })?;
+
+//         let status = if (res.status.is_informational()) {
+//             200
+//         } else {
+//             500
+//         };
+//         res.body()
+//             .reader()
+//             .read_to_end(read_buff)
+//             .await
+//             .map_err(|e| meteofrance_rs::client_no_std::Error {
+//                 err: String::from("JSON error"),
+//             })?;
+//         return Result::Ok(HttpGetResponse { status });
+//     }
+// }

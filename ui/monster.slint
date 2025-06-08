@@ -1,0 +1,32 @@
+import { SpriteSheet } from "spritesheet.slint";
+export component Monster inherits Rectangle {
+    in property <bool> visible_on_screen: true;
+    in property <image> img_source;
+    clip: true;
+    height: 26px;
+    width: 31px;
+    states [
+        visible when visible_on_screen: {
+            img.y: 0px;
+        }
+        not_visible when !visible_on_screen: {
+            img.y: img.height;
+        }
+    ]
+    img := Rectangle {
+        clip: true;
+        SpriteSheet {
+            source: img_source;
+            frames-wide: 2;
+            frames-high: 3;
+            playing: true;
+            duration: 6 * 125ms;
+        }
+        animate y {
+            easing: ease-in-out-back;
+            duration: 500ms;
+        }
+    }
+
+
+}

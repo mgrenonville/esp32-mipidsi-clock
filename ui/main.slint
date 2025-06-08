@@ -1,8 +1,9 @@
 import { HorizontalBox, VerticalBox, Button, Spinner } from "std-widgets.slint";
 import "assets/editundo.ttf";
-
+import { DataView } from "dataview.slint";
 import { Globals, WifiState, TimeOfDay } from "common.slint";
-import { World , Monster} from "background.slint";
+import { World } from "background.slint";
+import { Pokeball } from "countdown.slint";
 export { Globals }
 
 export component Recipe inherits Window {
@@ -11,14 +12,28 @@ export component Recipe inherits Window {
     height: 240px;
     width: 240px;
 
+    property <bool> countdown_running: Globals.countdown > (Globals.current_time - 5ms);
+
     world := World {
-        monster: @image-url("img/anims/c-1-open.png");
+        monster: @image-url("assets/moving/sheet.png");
         position: Globals.monster_position;
         time_of_day: Globals.time_of_day;
         moon: Globals.moon;
         night_factor: Globals.night_factor;
         sky_brush: Globals.sky_brush;
         monster_visibility: Globals.monster_visibility;
+    }
+    countdown := Pokeball {
+        percent: Math.clamp((Globals.countdown / 1ms - Globals.current_time / 1ms) / Globals.countdown_total_duration * 100, 0,100);
+        duration: Globals.format_countdown(Globals.current_time, Globals.countdown);
+        states [
+            running when countdown_running : { // adds 5s after the end of the countdown.
+                visible: true;
+            }
+            pause when !countdown_running : {
+                visible: false;
+            }
+        ]
     }
 
     VerticalBox {
@@ -29,9 +44,15 @@ export component Recipe inherits Window {
                 font-family: "Edit Undo BRK";
                 font-size: 72px;
                 horizontal-alignment: TextHorizontalAlignment.center;
-                text: Globals.name;
+                text: Globals.format_time(Globals.current_time);
                 states [
-                    night when Globals.night_factor >= 0%: {
+                    countdown when countdown_running : {
+                        color: gray;
+                        stroke: black;
+                        stroke-width: 20px;
+                        stroke-style: center;
+                    }
+                    night when Globals.night_factor >= 0% : {
                         color: hsv(0, 0, 0% + (Globals.night_factor * 100 - 0).clamp(0,40) * 1%);
                         stroke: black;
                         stroke-width: 1px;
@@ -61,4 +82,6 @@ export component Recipe inherits Window {
             }
         ]
     }
+
+
 }

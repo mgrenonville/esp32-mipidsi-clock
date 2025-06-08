@@ -20,9 +20,13 @@ export global Globals {
     in property <image> moon;
     in property <float> night_factor;
 
-    in-out property <string> name;
+    in-out property <duration> current_time; // duration is a i64, so UNIX timestamps fits.
     in property <MonsterPosition> monster_position;
     in property <bool> monster_visibility;
     in property <brush> sky_brush;
+    in property <duration> countdown;
+    in property <int> countdown_total_duration;
+    pure callback format_countdown(/* now : */duration , /* stops_at: */ duration) -> string;
+    pure callback format_time(/* now : */duration) -> string;
 
 }

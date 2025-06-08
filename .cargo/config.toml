@@ -20,6 +20,7 @@ rustflags = [
   # NOTE: May negatively impact performance of produced code
   "-C", "force-frame-pointers",
   "-C", "link-arg=-Tlinkall.x",
+  "-C", "link-arg=-Map=output.map",
 #  "-C", "link-arg=-Trom-functions.x",
 
 ]

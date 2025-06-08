@@ -1,0 +1,92 @@
+
+import { Monster } from "monster.slint";
+export component Pokeball {
+    // in property <string> tim;
+    in property <int> percent: 0;
+    property <length> belt_size: 30px;
+    in property <string> duration: "00:00";
+    width: 240px;
+    height: 240px;
+
+    Rectangle {
+        x: 0px;
+        y: 0px;
+        width: 240px;
+        height: 240px;
+        background: red;
+        border-radius: 120px;
+    }
+
+    belt := Rectangle {
+        x: 0px;
+        y: parent.height / 2 - belt_size / 2;
+        clip: true;
+        height: belt_size;
+        width: 240px;
+        Rectangle {
+            x: 0px;
+            y: -1 * parent.y;
+            width: 240px;
+            height: 240px;
+            background: black;
+            border-radius: 120px;
+        }
+    }
+
+    Rectangle {
+        x: 0px;
+        y: parent.height / 2 + belt_size / 2;
+        clip: true;
+        height: parent.height + belt_size / 2;
+        width: 240px;
+        Rectangle {
+            x: 0px;
+            y: -1 * parent.y;
+            width: 240px;
+            height: 240px;
+            background: white;
+            border-radius: 120px;
+        }
+    }
+
+    button := Rectangle {
+        property <length> top: 120px;
+        property <length> size: 60px + percent / 100 * (parent.width - 60px - belt_size / 2) + belt_size / 2;
+        x: top - size / 2;
+        y: top - size / 2;
+        clip: true;
+        height: size;
+        width: size;
+        border-color: black;
+        border-width: belt_size /2;
+        border-radius: size;
+        
+        background: white;
+    }
+
+    monster := Monster {
+        states [
+            love when percent == 0: {
+                img_source: @image-url("assets/love/sheet.png");
+            }
+    
+    
+            angry when percent > 0: {
+                img_source: @image-url("assets/bigfire/sheet.png");
+            }
+        ]        
+    }
+    Text {
+        text: duration;
+        vertical-alignment: TextVerticalAlignment.bottom;
+        height: 210px;
+        y: 0px;
+        color: gray;
+        font-size: 72px;
+        stroke: black;
+        stroke-style: TextStrokeStyle.center;
+        stroke-width: 3px;
+        visible: parent.percent > 0;
+    }
+    
+}
