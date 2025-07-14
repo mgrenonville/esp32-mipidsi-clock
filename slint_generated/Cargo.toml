@@ -16,7 +16,7 @@ homepage = "https://slint.dev"
 
 [dependencies]
 slint = { git = "https://github.com/slint-ui/slint", default-features = false, features = [
-    "compat-1-10",
+    "compat-1-2",
     "unsafe-single-threaded",
     "libm",
     "renderer-software",
