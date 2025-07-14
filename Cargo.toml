@@ -27,6 +27,7 @@ esp-wifi = { version = "0.12.0", features = [
 #] }
 
 
+debouncr = "0.2.2"
 
 
 

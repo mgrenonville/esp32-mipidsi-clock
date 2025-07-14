@@ -8,6 +8,7 @@ use alloc::vec;
 use alloc::{boxed::Box, rc::Rc};
 use chrono::Timelike;
 use chrono_tz::Europe::Paris;
+use debouncr::debounce_stateful_2;
 use embassy_executor::Spawner;
 use embassy_futures::select::select;
 
@@ -23,6 +24,7 @@ use embedded_hal_bus::spi::ExclusiveDevice;
 use esp32_mipidsi_clock::controller::WallClock;
 use esp32_mipidsi_clock::ntp::{await_now, now, NtpClient};
 use esp32_mipidsi_clock::wifi::EspEmbassyWifiController;
+use esp_hal::gpio::{Flex, Input};
 use esp_hal::{
     clock::CpuClock,
     delay::Delay,
@@ -289,8 +291,8 @@ async fn main(spawner: Spawner) {
 
     // let mut tcp_client: &TcpClient<'_, 1, 4096, 4096> = singleton!( TcpClient::new(stack, state), TcpClient<'_, 1, 4096, 4096>);
 
-    let mut tls_read_buf: &mut [u8; 16384] = singleton!([0; 16384], [u8; 16384]);
-    let mut tls_write_buf: &mut [u8; 16384] = singleton!([0; 16384], [u8; 16384]);
+    // let mut tls_read_buf: &mut [u8; 16384] = singleton!([0; 16384], [u8; 16384]);
+    // let mut tls_write_buf: &mut [u8; 16384] = singleton!([0; 16384], [u8; 16384]);
     // let config = TlsConfig::new(
     //     rng.random().into(),
     //      tls_read_buf,
@@ -318,6 +320,19 @@ async fn main(spawner: Spawner) {
 
     let _ = spawner.spawn(update_timer(rtc_rc.clone()));
 
+    let mut common = Flex::new(peripherals.GPIO9);
+    let mut first_struct = Input::new(peripherals.GPIO0, esp_hal::gpio::Pull::Up);
+    let mut second_struct = Input::new(peripherals.GPIO1, esp_hal::gpio::Pull::Up);
+    let mut third_struct = Input::new(peripherals.GPIO2, esp_hal::gpio::Pull::Up);
+
+    let _ = spawner.spawn(poll_button(
+        rtc_rc.clone(),
+        common,
+        first_struct,
+        second_struct,
+        third_struct,
+    ));
+
     let recipe = Recipe::new().unwrap();
 
     recipe.show().expect("unable to show main window");
@@ -325,6 +340,77 @@ async fn main(spawner: Spawner) {
     // run the controller event loop
     let mut controller = Controller::new(&recipe, board, rtc_rc.clone());
     controller.run().await;
+}
+
+#[embassy_executor::task]
+async fn poll_button(
+    rtc: Rc<RTCUtils>,
+    mut common: Flex<'static>,
+    first_struct: Input<'static>,
+    second_struct: Input<'static>,
+    third_struct: Input<'static>,
+) {
+    // let mut debouncer = timed_debouncer::Debouncer::new();
+    let mut debouncer1: debouncr::DebouncerStateful<u8, debouncr::Repeat2> =
+        debounce_stateful_2(true);
+    let mut debouncer2 = debounce_stateful_2(true);
+    let mut debouncer3 = debounce_stateful_2(true);
+    loop {
+        common.set_as_output();
+        common.set_low();
+
+        debouncer1.update(first_struct.is_low());
+        debouncer2.update(second_struct.is_low());
+        debouncer3.update(third_struct.is_low());
+
+        if (debouncer1.is_high() || debouncer2.is_high() || debouncer3.is_high()) {
+            common.set_as_input(esp_hal::gpio::Pull::Up);
+
+            Timer::after(Duration::from_millis(10)).await;
+
+            let s1 = first_struct.is_high();
+            let common_input = common.is_high();
+            let s3 = second_struct.is_high();
+            let s5 = third_struct.is_high();
+
+            log::info!(
+                "s1: {}, common: {}, s3: {}, s5:{}",
+                s1,
+                common_input,
+                s3,
+                s5,
+            );
+
+            if (s1 && common_input && debouncer1.is_high()) {
+                log::info!("S2");
+            } else if (!s1 && !common_input && debouncer1.is_high()) {
+                log::info!("S1 et S2");
+            } else if (!s1 && common_input && debouncer1.is_high()) {
+                log::info!("S1");
+            }
+
+            if (s3 && common_input && debouncer2.is_high()) {
+                log::info!("S3");
+            } else if (!s3 && !common_input && debouncer2.is_high()) {
+                log::info!("S3 et S4");
+            } else if (!s3 && common_input && debouncer2.is_high()) {
+                log::info!("S4");
+            }
+
+            if (s5 && common_input && debouncer3.is_high()) {
+                let current_time = rtc.get_date_time().await.with_timezone(&Paris);
+
+                controller::send_action(Action::StartCountDown(current_time, 120));
+            } else if (!s5 && !common_input && debouncer3.is_high()) {
+                log::info!("S5 et S6");
+            } else if (!s5 && common_input && debouncer3.is_high()) {
+                log::info!("S6");
+            }
+            Timer::after(Duration::from_millis(100)).await;
+        } else {
+            Timer::after(Duration::from_millis(1)).await;
+        };
+    }
 }
 
 #[embassy_executor::task]
