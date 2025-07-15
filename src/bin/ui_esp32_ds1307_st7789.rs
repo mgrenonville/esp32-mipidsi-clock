@@ -173,7 +173,7 @@ async fn main(spawner: Spawner) {
     let spi = Spi::new(
         peripherals.SPI2,
         Config::default()
-            .with_frequency(80u32.MHz())
+            .with_frequency(60u32.MHz())
             .with_mode(Mode::_0),
     )
     .unwrap()
@@ -311,7 +311,7 @@ async fn main(spawner: Spawner) {
     // })
     // .await;
 
-    let _ = spawner.spawn(print_stats()).unwrap();
+    // let _ = spawner.spawn(print_stats()).unwrap();
     let _ = spawner.spawn(fade_screen(bl, rtc_rc.clone())).unwrap();
     let _ = spawner.spawn(run_ntp_client(ntp_client));
     // let _ = spawner.spawn(run_weather(client));
