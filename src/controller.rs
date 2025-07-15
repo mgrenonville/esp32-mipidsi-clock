@@ -1,15 +1,24 @@
 // Copyright © 2025 David Haig
 // SPDX-License-Identifier: MIT
 
+use core::{
+    cell::RefCell,
+    fmt::{Debug, Display},
+};
+
 use alloc::{boxed::Box, format, rc::Rc, vec::Vec};
 use chrono::{DateTime, Timelike, Utc};
 use chrono_tz::{Europe::Paris, Tz};
 use embassy_sync::{
-    blocking_mutex::raw::CriticalSectionRawMutex, channel::Channel, signal::Signal,
+    blocking_mutex::raw::CriticalSectionRawMutex,
+    blocking_mutex::{CriticalSectionMutex, Mutex},
+    channel::Channel,
+    signal::Signal,
     waitqueue::WakerRegistration,
 };
 use embassy_time::{Duration, Instant, Timer};
 use embedded_graphics::prelude::Point;
+use i_slint_core::graphics::LinearGradientBrush;
 use log::{debug, error};
 use slint::{Brush, ComponentHandle, Image, Rgba8Pixel, SharedPixelBuffer, ToSharedString};
 use slint_generated::{Globals, MonsterEnv, Recipe, TimeOfDay, WifiState};
@@ -50,6 +59,18 @@ pub static REFRESH_SIGNAL: RefreshScreenChannelType = Channel::new();
 pub static WAKER: WakerRegistration = WakerRegistration::new();
 static SOME_SIGNAL: Signal<CriticalSectionRawMutex, ()> = Signal::new();
 
+struct MoonAndTime {
+    version: DateTime<Tz>,
+}
+impl Debug for MoonAndTime {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "MoonAndTime(version: {})", self.version)
+    }
+}
+
+static CURRENT_MOON: CriticalSectionMutex<RefCell<Option<MoonAndTime>>> =
+    CriticalSectionMutex::new(RefCell::new(Option::None));
+
 pub trait WallClock {
     async fn get_date_time(&self) -> DateTime<Utc>;
     async fn set_date_time(&self, datetime: chrono::DateTime<Utc>);
@@ -70,6 +91,7 @@ pub struct Controller<'a, Hardware, WallClock> {
     main_window: &'a Recipe,
     hardware: Hardware,
     wall_clock: Rc<WallClock>,
+    current_sky: CriticalSectionMutex<RefCell<Option<MoonAndTime>>>,
 }
 
 impl<'a, H, WC> Controller<'a, H, WC>
@@ -82,6 +104,7 @@ where
             main_window,
             hardware,
             wall_clock,
+            current_sky: CriticalSectionMutex::new(RefCell::new(Option::None)),
         }
     }
 
@@ -140,32 +163,62 @@ where
             Action::WifiStateUpdate(wifi_state) => globals.set_wifi_state(wifi_state),
             Action::UpdateTime(current_time) => {
                 globals.set_current_time(current_time.timestamp());
-                let (tod, night_factor, brush) =
-                    crate::sky::get_slint_gradient(current_time.to_utc());
-                globals.set_night_factor(night_factor);
-                globals.set_time_of_day(tod);
-                let buff = Moon::new(current_time.to_utc()).build_image();
 
-                globals.set_moon(Image::from_rgba8(buff));
-
-                let mut point = Point { x: 125, y: 188 }; // outside
-                let mut env = slint_generated::MonsterEnv::OUTSIDE;
-                let local_time = current_time.with_timezone(&Paris);
-                if ((local_time.hour() >= 20 || local_time.hour() < 8) || night_factor > 0.25) {
-                    point = Point { x: 195, y: 138 }; // in house
-                    env = slint_generated::MonsterEnv::HOUSE;
-                }
-
-                if (local_time.hour() >= 21 || local_time.hour() < 7) {
-                    env = slint_generated::MonsterEnv::SLEEPING;
-                }
-
-                globals.set_monster_position(slint_generated::MonsterPosition {
-                    env: env,
-                    x: point.x,
-                    y: point.y,
+                let up_to_date_sky = self.current_sky.lock(|r| {
+                    r.borrow()
+                        .as_ref()
+                        .is_some_and(|m| (current_time - m.version).num_seconds().abs() < 60)
                 });
-                globals.set_sky_brush(Brush::LinearGradient(brush))
+                if (!up_to_date_sky) {
+                    self.current_sky.lock(|r| {
+                        r.replace(Option::Some(MoonAndTime {
+                            version: current_time,
+                        }))
+                    });
+
+                    log::info!("Generating sky and position for 1m");
+                    let (tod, night_factor, brush) =
+                        crate::sky::get_slint_gradient(current_time.to_utc());
+                    globals.set_night_factor(night_factor);
+                    globals.set_time_of_day(tod);
+
+                    let mut point = Point { x: 125, y: 188 }; // outside
+                    let mut env = slint_generated::MonsterEnv::OUTSIDE;
+
+                    let local_time = current_time.with_timezone(&Paris);
+                    if ((local_time.hour() >= 20 || local_time.hour() < 8) || night_factor > 0.25) {
+                        point = Point { x: 195, y: 138 }; // in house
+                        env = slint_generated::MonsterEnv::HOUSE;
+                    }
+
+                    if (local_time.hour() >= 21 || local_time.hour() < 7) {
+                        env = slint_generated::MonsterEnv::SLEEPING;
+                    }
+
+                    globals.set_sky_brush(Brush::LinearGradient(brush));
+                    globals.set_monster_position(slint_generated::MonsterPosition {
+                        env: env,
+                        x: point.x,
+                        y: point.y,
+                    });
+                }
+
+                let updated_moon = CURRENT_MOON.lock(|r| {
+                    r.borrow()
+                        .as_ref()
+                        .is_some_and(|m| current_time.timestamp() - m.version.timestamp() < 3600)
+                });
+
+                if (!updated_moon) {
+                    CURRENT_MOON.lock(|r| {
+                        r.replace(Option::Some(MoonAndTime {
+                            version: current_time,
+                        }))
+                    });
+                    log::info!("Generating moon for 1h");
+                    let buff = Moon::new(current_time.to_utc()).build_image();
+                    globals.set_moon(Image::from_rgba8(buff));
+                }
             }
             Action::ShowMonster(monster) => {
                 globals.set_monster_visibility(monster);
